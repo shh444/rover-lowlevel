@@ -23,6 +23,7 @@ import numpy as np
 
 from . import programs
 from .common import JOINT_SHORT, KD_DAMP, KD_STAND, JointCmd, cosine_interp
+from .dataset import TRACE_COLUMNS, update_meta, utc_now, write_meta
 from .safety import Guard, SafetyAbort
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ class Interrupts:
         self.during_exit = False
 
     def install(self):
-        for name in ("SIGINT", "SIGTERM", "SIGHUP"):
+        for name in ("SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"):      # SIGBREAK: Windows 의 CTRL_BREAK_EVENT
             if hasattr(signal, name):
                 signal.signal(getattr(signal, name), self._handler)
 
@@ -91,17 +92,17 @@ class Pacer:
 
 
 class TraceLog:
-    """틱마다 상태·명령을 CSV 로 남긴다 (tools/trace_stats.py 로 요약)."""
+    """틱마다 상태·명령을 CSV 로 남긴다 (열 정의: lowlevel.dataset.TRACE_COLUMNS). 0.1초마다 flush 해 실행 중에도 읽을 수 있다."""
 
-    def __init__(self, path):
+    def __init__(self, path, flush_every: int = 20):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.path = Path(path)
         self.f = open(path, "w", newline="", encoding="utf-8")
         self.w = csv.writer(self.f)
-        self.w.writerow(["t", "phase", "age_ms", "grav_z", "base_z"]
-                        + [f"q_{n}" for n in JOINT_SHORT] + [f"dq_{n}" for n in JOINT_SHORT]
-                        + [f"qdes_{n}" for n in JOINT_SHORT] + [f"tau_{n}" for n in JOINT_SHORT]
-                        + ["kp", "kd"])
+        self.w.writerow(TRACE_COLUMNS)
+        self.f.flush()
         self.rows = 0
+        self.flush_every = max(1, int(flush_every))
 
     def row(self, t, phase, state, cmd) -> None:
         base_z = state.extra.get("base_pos", (np.nan, np.nan, np.nan))[2]
@@ -109,8 +110,11 @@ class TraceLog:
                          f"{state.gravity_body()[2]:.4f}", f"{base_z:.4f}"]
                         + [f"{x:.5f}" for x in state.q] + [f"{x:.4f}" for x in state.dq]
                         + [f"{x:.5f}" for x in cmd.q] + [f"{x:.3f}" for x in state.tau_est]
-                        + [f"{cmd.kp[0]:.2f}", f"{cmd.kd[0]:.3f}"])
+                        + [f"{cmd.kp[0]:.2f}", f"{cmd.kd[0]:.3f}"]
+                        + [f"{x:.4f}" for x in state.gyro] + [f"{x:.3f}" for x in state.acc])
         self.rows += 1
+        if self.rows % self.flush_every == 0:
+            self.f.flush()
 
     def close(self) -> None:
         self.f.close()
@@ -210,11 +214,14 @@ class Session:
     """
 
     def __init__(self, io, dt: float = 0.005, realtime: bool = True, exit_mode: str = "damp",
-                 guard: Guard | None = None, log_path=None, kd_damp: float = KD_DAMP):
+                 guard: Guard | None = None, log_path=None, kd_damp: float = KD_DAMP,
+                 meta: dict | None = None):
+        """meta: 기록 폴더의 meta.json 에 넣을 정보 (program, params, tags, note ...). log_path 가 있을 때만 쓴다."""
         self.io, self.dt, self.realtime = io, float(dt), bool(realtime)
         self.exit_mode, self.kd_damp = exit_mode, float(kd_damp)
         self.guard = guard or Guard(self.dt)
         self.log = TraceLog(log_path) if log_path else None
+        self.meta = dict(meta or {})
         self.interrupts = Interrupts()
         self.pacer = Pacer(self.dt, self.realtime)
         self.tick = 0
@@ -224,6 +231,11 @@ class Session:
 
     def __enter__(self):
         self.interrupts.install()
+        if self.log:
+            m = self.meta
+            write_meta(self.log.path.parent, source=getattr(self.io, "name", "?"), program=m.get("program", "custom"),
+                       params=m.get("params"), dt=self.dt, tags=m.get("tags"), note=m.get("note", ""),
+                       extra={k: v for k, v in m.items() if k not in ("program", "params", "tags", "note")})
         return self
 
     def run(self, seconds: float | None = None):
@@ -262,6 +274,10 @@ class Session:
         finally:
             if self.log:
                 self.log.close()
+                update_meta(self.log.path.parent, status=self.reason, ended_at=utc_now(), ticks=self.tick,
+                            program_seconds=self.tick * self.dt, exit_mode=exit_mode,
+                            deadline_misses=self.pacer.misses, max_late_ms=self.pacer.max_late * 1e3,
+                            signals_received=self.interrupts.count)
             self.io.close()
         print(f"[세션 종료] 안전 종료 완료. 기한 초과 {self.pacer.misses}회, 최대 지연 {self.pacer.max_late * 1e3:.2f} ms")
         return exc_type is not None and issubclass(exc_type, (KeyboardInterrupt, SafetyAbort))

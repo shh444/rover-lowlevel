@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Rover 데이터 플랫폼: 시뮬 · 실기 수집과 비교</title>
+<style>
+  :root { --bg:#111; --panel:#181818; --fg:#eee; --muted:#999; --grid:#333; --a:#4da3ff; --b:#ffa34d; --des:#bbb; --ok:#9f9; --bad:#f77; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:18px; padding:10px 16px; border-bottom:1px solid var(--grid); }
+  header b { font-size:16px; }
+  nav button { background:none; border:1px solid var(--grid); color:var(--fg); padding:6px 14px; cursor:pointer; border-radius:4px; }
+  nav button.active { background:#2a2a2a; border-color:#666; }
+  main { padding:12px 16px; }
+  section { display:none; } section.active { display:block; }
+  .row { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; margin:6px 0; }
+  label { color:var(--muted); } label input, label select { margin-left:6px; background:#222; color:var(--fg); border:1px solid #444; padding:4px 6px; border-radius:3px; }
+  input[type=number] { width:80px; } input[type=text] { width:160px; }
+  button.act { background:#2d5; color:#000; border:none; padding:7px 16px; border-radius:4px; cursor:pointer; font-weight:600; }
+  button.stop { background:#e55; color:#fff; border:none; padding:7px 16px; border-radius:4px; cursor:pointer; font-weight:600; }
+  button.sm { background:#333; color:var(--fg); border:1px solid #555; padding:3px 8px; border-radius:3px; cursor:pointer; }
+  table { border-collapse:collapse; font-variant-numeric:tabular-nums; width:100%; }
+  td, th { border:1px solid var(--grid); padding:4px 8px; text-align:right; white-space:nowrap; }
+  th:first-child, td:first-child, td.l, th.l { text-align:left; }
+  tr.sim td:first-child { border-left:4px solid var(--a); } tr.real td:first-child { border-left:4px solid var(--b); }
+  canvas { display:block; width:100%; height:190px; background:#161616; border:1px solid var(--grid); margin-bottom:8px; }
+  pre { background:#0d0d0d; border:1px solid var(--grid); padding:8px; max-height:180px; overflow:auto; font-size:12px; color:#bbb; }
+  .legend span { margin-right:14px; } .legend i { display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:5px; }
+  .muted { color:var(--muted); } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  #joints label { margin-right:6px; }
+  h3 { margin:14px 0 6px; font-size:15px; color:#ddd; }
+</style>
+</head>
+<body>
+<header>
+  <b>Rover 데이터 플랫폼</b>
+  <nav>
+    <button data-tab="collect" class="active">수집</button>
+    <button data-tab="runs">기록</button>
+    <button data-tab="compare">비교</button>
+  </nav>
+  <span id="joints" class="muted"></span>
+</header>
+<main>
+
+<section id="collect" class="active">
+  <div class="row">
+    <label>대상 <select id="f-backend"><option value="mujoco">시뮬 (MuJoCo)</option><option value="dds">실기 (DDS)</option></select></label>
+    <label>프로그램 <select id="f-program"><option>sine</option><option>hold</option><option>damp</option><option>standup</option></select></label>
+    <label>시간 s <input id="f-duration" type="number" value="5" step="1"></label>
+    <label>amp rad <input id="f-amp" type="number" value="0.1" step="0.01"></label>
+    <label>freq Hz <input id="f-freq" type="number" value="0.9" step="0.1"></label>
+    <label>관절 <input id="f-joints" type="text" value="thigh"></label>
+    <label>kp <input id="f-kp" type="number" value="30" step="1"></label>
+    <label>kd <input id="f-kd" type="number" value="1.2" step="0.1"></label>
+    <label>시뮬 시작 자세 <select id="f-start"><option>lying</option><option>standing</option></select></label>
+  </div>
+  <div class="row">
+    <label>태그 <input id="f-tags" type="text" placeholder="쉼표로 구분"></label>
+    <label>메모 <input id="f-note" type="text" style="width:260px"></label>
+    <label id="confirm-wrap" style="display:none">실기 확인 <input id="f-confirm" type="text" placeholder="REAL 입력" style="width:90px"></label>
+    <button class="act" id="btn-start">시작</button>
+    <button class="stop" id="btn-stop" disabled>정지 (안전 종료)</button>
+    <span id="job-status" class="muted"></span>
+  </div>
+  <div class="muted">실기는 kill_robot 이후, 로봇을 지지한 상태에서만. 정지 버튼은 SIGINT 를 보내 run.py 가 엎드림/댐핑으로 안전 종료하게 한다. 마지막 명령은 항상 댐핑이다.</div>
+  <h3>라이브 <span id="live-title" class="muted"></span></h3>
+  <div class="legend"><span><i style="background:var(--des)"></i>명령 q_des</span><span><i style="background:var(--a)"></i>측정 q</span></div>
+  <div id="live-charts"></div>
+  <h3>작업 로그</h3>
+  <pre id="job-log">(없음)</pre>
+</section>
+
+<section id="runs">
+  <div class="row"><button class="sm" id="btn-refresh">새로고침</button> <span class="muted">A/B 버튼으로 비교 대상을 고르고 "비교" 탭으로 간다. 파랑=시뮬, 주황=실기.</span></div>
+  <table id="runs-table"><thead><tr><th class="l">기록</th><th class="l">출처</th><th class="l">프로그램</th><th class="l">파라미터</th><th>틱</th><th class="l">상태</th><th class="l">태그</th><th class="l">동작</th></tr></thead><tbody></tbody></table>
+  <h3>기록 보기 <span id="detail-title" class="muted"></span></h3>
+  <div class="legend"><span><i style="background:var(--des)"></i>명령 q_des</span><span><i style="background:var(--a)"></i>측정 q</span><span><i style="background:var(--b)"></i>쌍둥이 시뮬 (있으면)</span></div>
+  <div id="detail-charts"></div>
+</section>
+
+<section id="compare">
+  <div class="row">
+    <label>A <select id="c-a"></select></label>
+    <label>B <select id="c-b"></select></label>
+    <label>관절 <input id="c-joints" type="text" placeholder="비우면 구동 관절" style="width:180px"></label>
+    <label><input id="c-rel" type="checkbox" checked> 시작 자세 기준(상대)</label>
+    <button class="act" id="btn-compare">비교</button>
+    <span id="c-status" class="muted"></span>
+  </div>
+  <div class="legend"><span><i style="background:var(--a)"></i>A 측정 q</span><span><i style="background:var(--b)"></i>B 측정 q</span><span><i style="background:var(--des)"></i>A 명령 q_des</span><span><i style="background:#777"></i>B 명령 q_des</span></div>
+  <div id="c-charts"></div>
+  <h3>지표 (B 를 A 의 시각축에 보간, 공통 구간)</h3>
+  <table id="c-metrics"><thead><tr><th class="l">관절</th><th>RMSE A−B</th><th>상관</th><th>추종 RMSE A</th><th>추종 RMSE B</th><th>진폭비 A</th><th>진폭비 B</th><th>지연 A</th><th>지연 B</th><th>토크 피크 A</th><th>토크 피크 B</th></tr></thead><tbody></tbody></table>
+  <h3>단계별 (A 기준)</h3>
+  <table id="c-phase"><thead><tr><th class="l">단계</th><th>t0</th><th>t1</th><th>RMSE A−B</th></tr></thead><tbody></tbody></table>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const JOINTS = ["FL_abad","FL_thigh","FL_calf","FR_abad","FR_thigh","FR_calf","RL_abad","RL_thigh","RL_calf","RR_abad","RR_thigh","RR_calf"];
+const f = (x, d = 3, unit = "") => (x == null || Number.isNaN(x)) ? "-" : Number(x).toFixed(d) + unit;
+let currentJob = null, livePoll = null, runsCache = [];
+
+// ---------- 탭 ----------
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.tab));
+  if (b.dataset.tab === "runs") loadRuns();
+  if (b.dataset.tab === "compare") fillCompareSelects();
+});
+
+// ---------- 차트 ----------
+function drawChart(canvas, label, lines, phases) {
+  const W = canvas.width = canvas.clientWidth * devicePixelRatio, H = canvas.height = canvas.clientHeight * devicePixelRatio;
+  const ctx = canvas.getContext("2d"); ctx.clearRect(0, 0, W, H);
+  let tmin = Infinity, tmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  for (const l of lines) for (let i = 0; i < l.t.length; i++) { const x = l.t[i], y = l.y[i]; if (y == null) continue;
+    if (x < tmin) tmin = x; if (x > tmax) tmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
+  if (!isFinite(ymin) || tmax <= tmin) return;
+  const pad = Math.max(0.02, (ymax - ymin) * 0.15); ymin -= pad; ymax += pad;
+  const L = 60 * devicePixelRatio, R = 10, T = 14 * devicePixelRatio, B = 22 * devicePixelRatio;
+  const X = v => L + (v - tmin) / (tmax - tmin) * (W - L - R), Y = v => T + (ymax - v) / (ymax - ymin) * (H - T - B);
+  ctx.lineWidth = 1; ctx.font = `${11 * devicePixelRatio}px system-ui`;
+  if (phases) for (const p of phases) { ctx.fillStyle = "rgba(255,255,255,0.03)"; ctx.fillRect(X(p.t0), T, X(p.t1) - X(p.t0), H - T - B);
+    ctx.fillStyle = "#777"; ctx.fillText(p.phase, X(p.t0) + 3, T + 11 * devicePixelRatio); }
+  ctx.strokeStyle = "#333"; ctx.fillStyle = "#aaa";
+  for (let k = 0; k <= 4; k++) { const y = ymin + (ymax - ymin) * k / 4; ctx.beginPath(); ctx.moveTo(L, Y(y)); ctx.lineTo(W - R, Y(y)); ctx.stroke(); ctx.fillText(y.toFixed(3), 4, Y(y) + 4); }
+  for (let k = 0; k <= 6; k++) { const x = tmin + (tmax - tmin) * k / 6; ctx.beginPath(); ctx.moveTo(X(x), T); ctx.lineTo(X(x), H - B); ctx.stroke(); ctx.fillText(x.toFixed(1) + "s", X(x) - 10, H - 6); }
+  ctx.fillStyle = "#ddd"; ctx.fillText(label, L + 6, T + 22 * devicePixelRatio);
+  for (const l of lines) {
+    ctx.strokeStyle = l.color; ctx.lineWidth = (l.width || 1.5) * devicePixelRatio; ctx.setLineDash(l.dash ? [6, 4] : []);
+    ctx.beginPath(); let pen = false;
+    for (let i = 0; i < l.t.length; i++) { const y = l.y[i]; if (y == null) { pen = false; continue; } const x = X(l.t[i]), yy = Y(y); pen ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); pen = true; }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+function chartsFor(container, names) {
+  container.innerHTML = "";
+  const map = {};
+  for (const n of names) { const c = document.createElement("canvas"); container.appendChild(c); map[n] = c; }
+  return map;
+}
+function drawRunSeries(container, data, withSim) {
+  const names = Object.keys(data.series);
+  const cv = chartsFor(container, names.concat(["__tau"]));
+  for (const n of names) {
+    const s = data.series[n];
+    const lines = [{ t: data.t, y: s.qdes, color: "#bbb", dash: true }, { t: data.t, y: s.q, color: "#4da3ff" }];
+    if (withSim && s.sim_t) lines.push({ t: s.sim_t, y: s.sim_q, color: "#ffa34d" });
+    drawChart(cv[n], n + " [rad]", lines, data.phases);
+  }
+  const n0 = names[0]; if (n0) {
+    const s = data.series[n0]; const lines = [{ t: data.t, y: s.tau, color: "#4da3ff" }];
+    if (withSim && s.sim_t) lines.push({ t: s.sim_t, y: s.sim_tau, color: "#ffa34d" });
+    drawChart(cv.__tau, n0 + " 토크 [N·m]", lines, data.phases);
+  }
+}
+
+// ---------- 수집 ----------
+$("#f-backend").onchange = () => { $("#confirm-wrap").style.display = $("#f-backend").value === "dds" ? "" : "none"; };
+$("#btn-start").onclick = async () => {
+  const body = { backend: $("#f-backend").value, program: $("#f-program").value, duration: +$("#f-duration").value,
+    amp: +$("#f-amp").value, freq: +$("#f-freq").value, joints: $("#f-joints").value, kp: +$("#f-kp").value, kd: +$("#f-kd").value,
+    start: $("#f-start").value, tags: $("#f-tags").value.split(",").map(s => s.trim()).filter(Boolean), note: $("#f-note").value,
+    confirm: $("#f-confirm").value };
+  if (body.backend === "dds" && !confirm("실기 로봇에 명령을 보냅니다. kill_robot 을 했고, 로봇이 지지되어 있고, 주변이 비어 있습니까?")) return;
+  const r = await (await fetch("/api/start", { method: "POST", body: JSON.stringify(body) })).json();
+  if (r.error) { $("#job-status").innerHTML = `<span class="bad">${r.error}</span>`; return; }
+  currentJob = r; $("#btn-stop").disabled = false; $("#live-title").textContent = r.run_id;
+  $("#job-status").innerHTML = `<span class="ok">시작: ${r.run_id}</span>`;
+  if (livePoll) clearInterval(livePoll); livePoll = setInterval(pollJob, 500); pollJob();
+};
+$("#btn-stop").onclick = async () => { if (!currentJob) return; await fetch("/api/stop", { method: "POST", body: JSON.stringify({ job: currentJob.id }) }); $("#job-status").innerHTML = "정지 요청 → 안전 종료 중"; };
+async function pollJob() {
+  if (!currentJob) return;
+  const jobs = (await (await fetch("/api/jobs")).json()).jobs;
+  const j = jobs.find(x => x.id === currentJob.id); if (!j) return;
+  $("#job-log").textContent = (j.log_tail || []).join("\n") || "(로그 없음)";
+  try {
+    const d = await (await fetch(`/api/run/${j.run_id}/series?max=1500`)).json();
+    if (!d.error && d.t && d.t.length) drawRunSeries($("#live-charts"), d, false);
+  } catch (e) {}
+  if (!j.running) {
+    clearInterval(livePoll); livePoll = null; $("#btn-stop").disabled = true;
+    $("#job-status").innerHTML = j.returncode === 0 ? `<span class="ok">완료: ${j.run_id}</span>` : `<span class="bad">종료 코드 ${j.returncode}: ${j.run_id} (안전 종료 후 기록 확인)</span>`;
+    currentJob = null; loadRuns();
+  }
+}
+
+// ---------- 기록 ----------
+let selA = null, selB = null;
+async function loadRuns() {
+  const d = await (await fetch("/api/runs")).json();
+  runsCache = d.runs; $("#joints").textContent = "";
+  const tb = $("#runs-table tbody"); tb.innerHTML = "";
+  for (const r of d.runs) {
+    const p = r.params || {}; const ps = Object.entries(p).filter(([k, v]) => v != null && k !== "exit" && k !== "start").map(([k, v]) => `${k}=${v}`).join(" ");
+    const tr = document.createElement("tr"); tr.className = r.label === "real" ? "real" : (r.label === "sim" ? "sim" : "");
+    tr.innerHTML = `<td class="l">${r.id}</td><td class="l">${r.label} (${r.source})</td><td class="l">${r.program}</td><td class="l muted">${ps}</td>
+      <td>${r.ticks ?? "-"}</td><td class="l ${r.status === "completed" ? "ok" : (r.status === "running" ? "" : "bad")}">${r.status}</td>
+      <td class="l">${(r.tags || []).join(", ")}${r.note ? " · " + r.note : ""}</td>
+      <td class="l"><button class="sm" data-view="${r.id}">차트</button> <button class="sm" data-a="${r.id}">A</button> <button class="sm" data-b="${r.id}">B</button> <button class="sm" data-tag="${r.id}">태그</button></td>`;
+    tb.appendChild(tr);
+  }
+  tb.querySelectorAll("[data-view]").forEach(b => b.onclick = () => viewRun(b.dataset.view));
+  tb.querySelectorAll("[data-a]").forEach(b => b.onclick = () => { selA = b.dataset.a; fillCompareSelects(); $("#c-status").textContent = `A=${selA}`; });
+  tb.querySelectorAll("[data-b]").forEach(b => b.onclick = () => { selB = b.dataset.b; fillCompareSelects(); $("#c-status").textContent = `B=${selB}`; });
+  tb.querySelectorAll("[data-tag]").forEach(b => b.onclick = async () => {
+    const r = runsCache.find(x => x.id === b.dataset.tag); const tags = prompt("태그 (쉼표)", (r.tags || []).join(",")); if (tags == null) return;
+    const note = prompt("메모", r.note || ""); await fetch(`/api/run/${r.id}/meta`, { method: "POST", body: JSON.stringify({ tags: tags.split(",").map(s => s.trim()).filter(Boolean), note: note ?? "" }) }); loadRuns();
+  });
+}
+async function viewRun(id) {
+  const d = await (await fetch(`/api/run/${id}/series`)).json();
+  if (d.error) { $("#detail-title").textContent = d.error; return; }
+  $("#detail-title").textContent = `${id} (${d.label}, ${d.rows}틱)`;
+  drawRunSeries($("#detail-charts"), d, true);
+}
+$("#btn-refresh").onclick = loadRuns;
+
+// ---------- 비교 ----------
+function fillCompareSelects() {
+  for (const [sel, cur] of [[$("#c-a"), selA], [$("#c-b"), selB]]) {
+    const keep = cur || sel.value; sel.innerHTML = "";
+    for (const r of runsCache) { const o = document.createElement("option"); o.value = r.id; o.textContent = `${r.label}: ${r.id}`; sel.appendChild(o); }
+    if (keep) sel.value = keep;
+  }
+}
+$("#btn-compare").onclick = async () => {
+  const a = $("#c-a").value, b = $("#c-b").value; if (!a || !b) return;
+  $("#c-status").textContent = "계산 중…";
+  const rel = $("#c-rel").checked ? 1 : 0;
+  const d = await (await fetch(`/api/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&joints=${encodeURIComponent($("#c-joints").value)}&rel=${rel}`)).json();
+  if (d.error) { $("#c-status").innerHTML = `<span class="bad">${d.error}</span>`; return; }
+  const m = d.metrics;
+  $("#c-status").textContent = `공통 ${f(m.common_seconds, 1, "s")}, RMSE A−B 전체 ${f(m.rmse_ab_all)} rad${rel ? " (시작 자세 기준)" : ""}  (A=${m.a.label} ${m.a.program}, B=${m.b.label} ${m.b.program})`;
+  const cv = chartsFor($("#c-charts"), m.joints.concat(["__tau"]));
+  for (const n of m.joints) {
+    const sa = d.series.a.series[n], sb = d.series.b.series[n];
+    drawChart(cv[n], n + " [rad]", [
+      { t: d.series.a.t, y: sa.qdes, color: "#bbb", dash: true }, { t: d.series.b.t, y: sb.qdes, color: "#777", dash: true },
+      { t: d.series.a.t, y: sa.q, color: "#4da3ff" }, { t: d.series.b.t, y: sb.q, color: "#ffa34d" }], d.series.a.phases);
+  }
+  const n0 = m.joints[0];
+  drawChart(cv.__tau, n0 + " 토크 [N·m]", [{ t: d.series.a.t, y: d.series.a.series[n0].tau, color: "#4da3ff" }, { t: d.series.b.t, y: d.series.b.series[n0].tau, color: "#ffa34d" }], d.series.a.phases);
+  const tb = $("#c-metrics tbody"); tb.innerHTML = "";
+  for (const [n, v] of Object.entries(m.per_joint)) tb.innerHTML += `<tr><td class="l">${n}</td><td>${f(v.rmse_ab)}</td><td>${f(v.corr_ab, 2)}</td><td>${f(v.track_rmse_a)}</td><td>${f(v.track_rmse_b)}</td>
+    <td>${f(v.amp_ratio_a, 2)}</td><td>${f(v.amp_ratio_b, 2)}</td><td>${f(v.lag_a_ms, 0, " ms")}</td><td>${f(v.lag_b_ms, 0, " ms")}</td><td>${f(v.tau_peak_a, 2)}</td><td>${f(v.tau_peak_b, 2)}</td></tr>`;
+  const pb = $("#c-phase tbody"); pb.innerHTML = "";
+  for (const p of m.per_phase) pb.innerHTML += `<tr><td class="l">${p.phase}</td><td>${f(p.t0, 2)}</td><td>${f(p.t1, 2)}</td><td>${f(p.rmse_ab)}</td></tr>`;
+};
+
+window.addEventListener("resize", () => {});
+loadRuns();
+</script>
+</body>
+</html>

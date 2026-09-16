@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from lowlevel import programs                                                    # noqa: E402
 from lowlevel.common import KD_SINE, KP_SINE, fmt, joint_mask                    # noqa: E402
+from lowlevel.dataset import update_meta, utc_now, write_meta                    # noqa: E402
 from lowlevel.runtime import (Interrupts, Pacer, TraceLog, confirm_real_robot,   # noqa: E402
                               safe_exit)
 from lowlevel.safety import Guard, SafetyAbort                                   # noqa: E402
@@ -40,6 +41,8 @@ def parse_args(argv=None):
     p.add_argument("--out", type=Path, default=None, help="기록 폴더 (기본 runs/<UTC>-<backend>-<program>)")
     p.add_argument("--exit", choices=("crouch", "damp"), default=None,
                    help="종료 방식. 기본: standup 은 crouch(엎드린 뒤 댐핑), 나머지는 damp")
+    p.add_argument("--tag", action="append", default=[], help="기록 meta.json 의 태그 (여러 번 가능)")
+    p.add_argument("--note", default="", help="기록 meta.json 의 메모")
     g = p.add_argument_group("안전 가드")
     g.add_argument("--slew", type=float, default=2.0, help="목표각 변화율 한계 rad/s")
     g.add_argument("--state-timeout", type=float, default=0.2, help="상태 수신 워치독 s (sim2real 0.2)")
@@ -99,6 +102,8 @@ def main(argv=None) -> int:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or (ROOT / "runs" / f"{stamp}-{args.backend}-{args.program}")
     out.mkdir(parents=True, exist_ok=True)
+    write_meta(out, source=args.backend, program=args.program, dt=args.dt, tags=args.tag, note=args.note,
+               params={k: getattr(args, k) for k in ("duration", "amp", "freq", "joints", "kp", "kd", "start", "exit")})
     io = make_backend(args, out)
     print(f"[준비] backend={io.name} program={args.program} dt={args.dt * 1e3:.1f}ms "
           f"realtime={args.realtime} out={out}")
@@ -175,6 +180,8 @@ def main(argv=None) -> int:
                           "last_mode_hw": np.asarray(final.extra.get("mode_hw", [])).tolist(),
                           "last_temp_hw": np.asarray(final.extra.get("temp_hw", [])).tolist()}
     (out / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    update_meta(out, status=reason, ended_at=utc_now(), ticks=tick, program_seconds=program_t, exit_mode=exit_mode,
+                deadline_misses=pacer.misses, max_late_ms=pacer.max_late * 1e3, signals_received=interrupts.count)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if reason == "completed" else 1
 

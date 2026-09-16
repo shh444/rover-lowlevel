@@ -163,23 +163,7 @@ python tools/live_compare.py --backend mujoco --program sine --seconds 10
 `runs/live-*/real.csv`, `sim.csv`, `summary.json` 이 남고 `examples/e10_plot_trace.py <run> --sim <run>/sim.csv` 로 정적 그래프를 만든다.
 쌍둥이 모델은 `--twin fixed`(몸통 공중 고정, 기본) 또는 `--twin ground --base-z 0.22`(바닥) 로 고른다.
 
-## 10. 데이터 플랫폼으로 수집·비교
-
-```bash
-python datalab/server.py --root runs --port 8095      # http://127.0.0.1:8095/
-```
-
-수집 탭에서 시뮬/실기 실행을 시작·정지하고(라이브 차트), 기록 탭에서 목록·태그를 관리하고, 비교 탭에서 A(시뮬) vs B(실기)를
-겹쳐 본다. 모든 기록은 `runs/<id>/meta.json` + `trace.csv` 형식이며 `lowlevel.dataset` 으로 스크립트에서도 읽을 수 있다.
-
-```python
-from lowlevel.dataset import load_run, compare_runs
-a, b = load_run("runs/<sim-id>"), load_run("runs/<real-id>")
-m = compare_runs(a, b, relative=True)          # 시작 자세가 다르면 relative=True
-print(m["rmse_ab_all"], m["per_joint"]["FL_thigh"]["amp_ratio_b"])
-```
-
-## 11. 자주 하는 실수
+## 10. 자주 하는 실수
 
 - `send()` 없이 `read()` 만 반복 → 시뮬은 시간이 흐르지 않는다.
 - 목표각에 오프셋을 더해서 보냄 → 논리각만 쓴다. 오프셋은 `DdsBackend` 가 처리한다.

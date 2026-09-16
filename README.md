@@ -26,15 +26,18 @@ python examples/e4_sine_joint.py --backend mujoco      # 로봇 없이 바로
 
 ```
 rover_lowlevel/
-├── run.py                   실행기(CLI). 프로그램 선택, 기록, 요약 JSON
+├── run.py                   실행기(CLI). 프로그램 선택, 기록(meta.json + trace.csv), 요약 JSON
+├── datalab/                 데이터 플랫폼: 시뮬·실기 실행 시작/정지, 기록 목록, 비교 대시보드 (server.py, ui.html)
 ├── examples/                e1~e10 짧은 예제 (아래 "예제" 절)
 ├── docs/USAGE.md            라이브러리로 쓰는 법 (API 튜토리얼)
+├── docs/platform.md         데이터 플랫폼 설명 (기록 형식, 화면, 지표, API)
 ├── dds_config.yaml          SDK 의 DDS QoS 설정 사본
 ├── lowlevel/
 │   ├── common.py            관절 순서·매핑·한계·State/JointCmd
 │   ├── safety.py            Guard: 워치독·넘어짐·과속·NaN → SafetyAbort, 목표각 범위/변화율/게인 제한
 │   ├── programs.py          standup / sine / hold / damp 목표 생성
 │   ├── runtime.py           페이싱·신호 처리·기록·안전 종료·실기 게이트, 이를 묶은 Session
+│   ├── dataset.py           기록 형식(meta.json, trace.csv) 읽기·목록·비교 지표 (시뮬·실기 공통)
 │   ├── backend_mujoco.py    MuJoCo 백엔드 (1ms substep 에서 PD 토크 계산 → mt00~mt11)
 │   ├── backend_dds.py       실기 백엔드 (LowerState → State, JointCmd → LowerCmd)
 │   └── virtual_plant.py     시험용 가상 로봇 몸체 (MuJoCo, 하드웨어 슬롯 규약) — 제어 코드는 쓰지 않음
@@ -143,6 +146,21 @@ python3 run.py --backend dds --program damp --duration 3     # 이후 hold → s
 같은 도구를 `PYTHONPATH=tests/fake_dds` 로 돌리면 가상 로봇으로 자체 시험이 된다.
 
 <!-- doc:realrobot:end -->
+## 데이터 플랫폼 (datalab/)
+
+시뮬과 실기를 같은 형식(`runs/<id>/meta.json` + `trace.csv`)으로 기록하고, 한 화면에서 실행·열람·비교한다.
+표준 라이브러리만 쓰므로 thor(실기+시뮬)에서도 노트북(시뮬·열람)에서도 그대로 돈다.
+
+```bash
+python datalab/server.py --root runs --port 8095        # http://127.0.0.1:8095/  (thor 면 ssh -L 8768:127.0.0.1:8095 thor)
+```
+
+- **수집** 탭: 대상(시뮬/실기)·프로그램·파라미터·태그를 정해 시작, 라이브 차트, 정지(SIGINT → 안전 종료). 실기는 `REAL` 확인 + 주 제어기 검사.
+- **기록** 탭: 모든 실행의 목록·차트·태그, 비교 대상 A/B 지정.
+- **비교** 탭: A(시뮬) vs B(실기)를 겹쳐 그리고 관절별 RMSE·상관·추종 오차·진폭비·지연·토크 피크, 단계별 RMSE. 시작 자세가 달라도 "시작 자세 기준(상대)" 로 비교.
+
+자세한 내용은 [docs/platform.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/platform.md).
+
 ## 예제 (examples/)
 
 SDK 의 e1~e9 처럼 짧은 스크립트다. `lowlevel.runtime.Session` 이 200 Hz 페이싱·가드·Ctrl+C·안전 종료를 맡아

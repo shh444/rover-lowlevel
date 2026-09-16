@@ -215,7 +215,9 @@ def main():
 
     prog = make_program(a, state0)
     exit_mode = "crouch" if a.program == "standup" else "damp"
-    with Session(io_real, dt=a.dt, realtime=True, exit_mode=exit_mode, log_path=out / "trace.csv") as s:
+    meta = {"program": a.program, "tags": ["live-compare"], "twin": a.twin,
+            "params": {"duration": a.seconds, "amp": a.amp, "freq": a.freq, "joints": a.joints, "kp": a.kp, "kd": a.kd}}
+    with Session(io_real, dt=a.dt, realtime=True, exit_mode=exit_mode, log_path=out / "trace.csv", meta=meta) as s:
         for t, state in s.run():
             cmd = prog.step(t, state)
             if cmd is None:
