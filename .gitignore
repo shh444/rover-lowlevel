@@ -16,3 +16,6 @@ docker/cyclonedds.generated.xml
 # 외부 저장소 사본 (dobot_rover_simulation, dobot_quad_sdk)
 vendor/
 vendor_sdk/
+
+# Sphinx 빌드 산출물
+docs/_build/
