@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -83,7 +84,8 @@ class IsaacBackend:
 
     def __init__(self, urdf_path=None, dt: float = 0.005, physics_dt: float = 0.001, start: str = "lying",
                  fixed_base: bool = False, headless: bool = True, init_q=None, init_base_z=None,
-                 render_every_tick: int = 4, engine: str = "physx", device: str = "cpu", usd_cache=None):
+                 render_every_tick: int = 4, engine: str = "physx", device: str = "cpu", usd_cache=None,
+                 physics_variant: str | None = None):
         urdf = Path(urdf_path) if urdf_path else find_default_urdf()
         if urdf is None or not urdf.exists():
             raise FileNotFoundError(f"URDF 없음: {urdf} (--urdf 또는 ROVER_VENDOR 로 지정)")
@@ -98,6 +100,7 @@ class IsaacBackend:
         self.engine = engine
         self.device = device
         self.usd_cache = Path(usd_cache) if usd_cache else ROOT / ".isaac_cache"
+        self.physics_variant = physics_variant
         self.mode = "manual"
         self.tick = 0
         self.last_tau = np.zeros(NUM_JOINTS)
@@ -114,7 +117,10 @@ class IsaacBackend:
             raise RuntimeError(EULA_MSG)
 
         from isaacsim import SimulationApp                         # 여기서 Kit 커널이 뜬다 (수십 초)
-        cfg = {"headless": self.headless, "renderer": "RaytracedLighting"}
+        cfg = {"headless": self.headless, "renderer": "RaytracedLighting",
+               # fast_shutdown=True(기본) 는 프로세스를 즉시 끝내므로 close() 가 진행 중 예외를 먼저 출력한다.
+               # 정상 종료(느리고 종료 시 segfault 가 날 수 있음)를 원하면 ROVER_ISAAC_FAST_SHUTDOWN=0
+               "fast_shutdown": os.environ.get("ROVER_ISAAC_FAST_SHUTDOWN", "1") == "1"}
         if self.headless:
             cfg["disable_viewport_updates"] = True
         t0 = time.perf_counter()
@@ -123,7 +129,10 @@ class IsaacBackend:
         try:
             self._build_world(start, init_q, init_base_z)
         except Exception:
-            self.close()
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush(); sys.stderr.flush()
+            self._close_now()
             raise
 
     # ---- 장면 구성 ----
@@ -169,7 +178,12 @@ class IsaacBackend:
 
         self._app_utils, self._stage_utils, self._sm = app_utils, stage_utils, SimulationManager
 
-        # 물리 엔진 선택 (physx / newton)
+        # 물리 엔진 선택 (physx / newton). newton 은 기본 python 앱에 안 실려 있어 확장을 먼저 켠다
+        if self.engine == "newton":
+            for ext in ("isaacsim.physics.newton", "isaacsim.physics.newton.tensors"):   # 엔진 + 텐서 API 백엔드
+                ok = app_utils.enable_extension(ext)
+                print(f"[isaac] {ext} 확장 켜기: {'OK' if ok else '실패'}", flush=True)
+            self.app.update()
         engines = dict(SimulationManager.get_available_physics_engines())
         if self.engine in engines:
             if not engines[self.engine]:
@@ -186,9 +200,15 @@ class IsaacBackend:
             from pxr import Gf
             physicsUtils.add_ground_plane(stage, "/World/ground", "Z", 50.0, Gf.Vec3f(0.0), Gf.Vec3f(0.5))
         usd = self._import_urdf()
-        stage_utils.add_reference_to_stage(usd_path=str(usd), path=ROBOT_PRIM)
+        # 변환 결과는 다중 물리(variant set "Physics": physx / mujoco / physics / none) 패키지라 엔진에 맞는 variant 를 골라야
+        # 관절·ArticulationRootAPI 가 생긴다 (기본 선택이 none 이면 물리 없음)
+        variant = self.physics_variant or ("mujoco" if self.engine == "newton" else "physx")
+        stage_utils.add_reference_to_stage(usd_path=str(usd), path=ROBOT_PRIM, variants=[("Physics", variant)])
+        print(f"[isaac] Physics variant = {variant}", flush=True)
+        t0 = time.perf_counter()
         while stage_utils.is_stage_loading():
             self.app.update()
+        print(f"[isaac] 로봇 USD 로드 {time.perf_counter() - t0:.1f}s", flush=True)
 
         # 초기 자세
         if init_q is not None:
@@ -198,11 +218,17 @@ class IsaacBackend:
         else:
             q0 = np.clip(Q_CROUCH, Q_LOWER, Q_UPPER)
         z = init_base_z if init_base_z is not None else (0.85 if self.fixed_base else (0.37 if start == "standing" else 0.32))
-        self.robot = Articulation(ROBOT_PRIM, positions=np.array([[0.0, 0.0, z]]),
-                                  orientations=np.array([[1.0, 0.0, 0.0, 0.0]]))
+        # 로봇을 높이 z 에 놓는다: 참조 프림(/World/rover) 자체를 옮긴다. 고정 베이스의 root_joint 는 body0 이 이 프림이라
+        # 앵커가 같이 따라오고, 자유 베이스는 몸통 시작 높이가 된다. (articulation root 프림을 직접 옮기면 안 된다)
+        from isaacsim.core.experimental.prims import XformPrim
+        XformPrim(ROBOT_PRIM, positions=np.array([[0.0, 0.0, z]]), orientations=np.array([[1.0, 0.0, 0.0, 0.0]]),
+                  reset_xform_op_properties=True)
+        self.robot = Articulation(ROBOT_PRIM)
+        print(f"[isaac] Articulation: {self.robot.paths}", flush=True)
 
         # 물리 초기화: 타임라인 없이 수동 (실패 시 타임라인 재생 방식으로 전환)
         SimulationManager.initialize_physics()
+        print(f"[isaac] 물리 초기화 (수동) → tensor valid={self.robot.is_physics_tensor_entity_valid()}", flush=True)
         if not self.robot.is_physics_tensor_entity_valid():
             app_utils.play()
             self.app.update()
@@ -230,10 +256,6 @@ class IsaacBackend:
         full[0, self.idx] = q0
         self.robot.set_dof_positions(full)
         self.robot.set_dof_velocities(np.zeros((1, self.ndof)))
-        try:
-            self.robot.set_world_poses(positions=np.array([[0.0, 0.0, z]]), orientations=np.array([[1.0, 0.0, 0.0, 0.0]]))
-        except Exception:
-            pass
         self._step_physics(1)
         if not self.headless:
             self.app.update()
@@ -319,6 +341,21 @@ class IsaacBackend:
         return False
 
     def close(self) -> None:
+        """Kit 종료는 인터프리터가 끝날 때로 미룬다. fast_shutdown(기본) 은 app.close() 에서 프로세스를 즉시 끝내므로
+        여기서 바로 닫으면 호출자의 뒷정리(요약 파일·메타 갱신·출력)가 사라진다. 호출 시 SimulationApp 의 atexit 훅이 닫는다."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        sys.stdout.flush(); sys.stderr.flush()
+        if not getattr(self, "app", None):
+            return
+        if self.app.config.get("fast_shutdown", True):
+            import atexit
+            atexit.register(self._close_now)          # LIFO: SimulationApp 자체 훅보다 먼저 돈다
+        else:
+            self._close_now()
+
+    def _close_now(self) -> None:
         try:
             self.app.close()
         except Exception:

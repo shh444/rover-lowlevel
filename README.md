@@ -17,7 +17,7 @@ python run.py --backend mujoco --program standup --duration 3 --viewer     # 뷰
 python datalab/server.py --port 8095                    # 데이터 플랫폼 대시보드 http://127.0.0.1:8095/
 ```
 
-백엔드: `mujoco`(시뮬), `dds`(실기), `isaac`(Isaac Sim, 실험적 · [docs/isaac.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/isaac.md)).
+백엔드: `mujoco`(시뮬), `dds`(실기), `isaac`(Isaac Sim 6.1, PhysX/Newton 검증 완료 · [docs/isaac.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/isaac.md)).
 
 | 출처 | 그대로 가져온 것 |
 |---|---|

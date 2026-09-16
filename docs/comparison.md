@@ -73,6 +73,22 @@ sim2real 관점: 시뮬에서 학습한 정책은 관절이 명령의 ~97%를 �
 해결 방향은 (a) 실기 kp 를 올리거나 마찰 피드포워드를 넣기, (b) 학습 시 마찰·백래시·지연 무작위화(사양의 domain randomization),
 (c) 모델의 `frictionloss`/`damping` 을 실측에 맞추기다. 이 도구들로 (c) 를 맞춘 뒤 다시 비교하면 된다.
 
+## 결과 3: MuJoCo vs Isaac Sim (같은 sine, 시뮬레이터끼리)
+
+2026-09-17 노트북에서 같은 조건(몸통 고정, 허벅지 ±0.1 rad 0.9 Hz, kp 30 / kd 1.2, 1 ms PD substep)으로 MuJoCo 와 Isaac Sim 6.1(PhysX)을
+각각 돌려 플랫폼 비교 탭에서 겹쳤다 (`mj-sine-fixed-01` vs `isaac-sine-fixed-01`, 시작 자세 기준).
+
+| 지표 | MuJoCo vs Isaac PhysX | MuJoCo vs 실기 (참고) |
+|---|---|---|
+| RMSE | 0.006–0.007 rad | 0.18 rad |
+| 상관 | 1.00 | 0.70–0.75 |
+| 진폭비 (X) | 1.00 | 0.62–0.79 |
+| 지연 (X) | 10–15 ms | 60–70 ms |
+| 토크 피크 (X) | 1.27 N·m | 1.1–2.0 N·m |
+
+두 시뮬레이터는 사실상 같은 답을 낸다. 따라서 실기와의 차이는 시뮬레이터 선택이 아니라 실기 관절의 마찰·지연에서 온다.
+Isaac 의 Newton 엔진(MuJoCo-Warp)도 같은 sine 에서 RMSE 0.009 rad 로 MuJoCo 와 일치한다 (`isaac-newton-sine-fixed-01`, 토크 피크 1.67 N·m 로 조금 높음). 자세한 설정은 [isaac.md](isaac.md).
+
 ## 방법 요약
 
 1. 실기 기록의 첫 관절각으로 시뮬을 초기화한다 (몸통 고정, 또는 바닥 모드면 `--base-z` 높이).
