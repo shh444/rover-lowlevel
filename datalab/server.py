@@ -61,6 +61,8 @@ def load_config(path: Path | None) -> dict:
                 cfg[k].update(v)
             else:
                 cfg[k] = v
+    # "_" 로 시작하는 항목은 주석·예시 (예: _isaac_example) 이므로 백엔드로 취급하지 않는다
+    cfg["commands"] = {k: v for k, v in cfg["commands"].items() if not k.startswith("_")}
     return cfg
 
 
