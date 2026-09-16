@@ -1,10 +1,12 @@
 """시험용 가상 Rover 몸체(MuJoCo). 실기 없이 DDS 경로를 검증할 때 '로봇 쪽'을 맡는다.
 
 실기 규약을 로봇 관점에서 흉내 낸다:
-  - 16 하드웨어 슬롯. 관절 12개는 ABS2HW 슬롯에 있고, 하드웨어 각도 = 관절각 + MOTOR_OFFSET[slot]
-  - 모터 드라이버 PD: tau = kp*(q_cmd - q_hw) + kd*(dq_cmd - dq) + tau_ff (슬롯 단위), MJCF ctrlrange 로 제한
-  - 명령을 받기 전에는 토크 0 (kill_robot 직후 PASSIVE 와 비슷)
-tests/fake_dds(가짜 SDK, in-process) 와 tools/virtual_robot_dds.py(실제 SDK, DDS 통신) 가 함께 쓴다.
+
+- 16 하드웨어 슬롯. 관절 12개는 ABS2HW 슬롯에 있고, 하드웨어 각도 = 관절각 + MOTOR_OFFSET[slot]
+- 모터 드라이버 PD: tau = kp*(q_cmd - q_hw) + kd*(dq_cmd - dq) + tau_ff (슬롯 단위), MJCF ctrlrange 로 제한
+- 명령을 받기 전에는 토크 0 (kill_robot 직후 PASSIVE 와 비슷)
+
+tests/fake_dds(가짜 SDK, in-process) 와 tools/virtual_robot_dds(실제 SDK, DDS 통신) 가 함께 쓴다.
 제어 코드(backend_*.py, programs.py, safety.py)는 이 모듈을 쓰지 않는다.
 """
 from __future__ import annotations

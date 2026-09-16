@@ -2,8 +2,9 @@
 
 인증된 보호 장치가 아니라 실습용 최소 방어선이다. 실기에서는 독립된 비상정지(전원 차단)를
 반드시 따로 준비한다. Guard 는 다음을 한다.
-  check(state)      : 비정상(NaN)·오래된 상태·과속·넘어짐 → SafetyAbort (→ 실행기가 댐핑으로 안전 종료)
-  limit(cmd, state) : 목표각을 URDF 범위로 자르고 변화율(slew)을 제한, kp/kd/tau_ff 상한 적용
+
+- ``check(state)``: 비정상(NaN)·오래된 상태·과속·넘어짐 → SafetyAbort (→ 실행기가 댐핑으로 안전 종료)
+- ``limit(cmd, state)``: 목표각을 URDF 범위로 자르고 변화율(slew)을 제한, kp/kd/tau_ff 상한 적용
 """
 from __future__ import annotations
 

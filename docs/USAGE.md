@@ -145,7 +145,25 @@ python tools/trace_stats.py runs/<폴더> --joint FL_thigh --every 0.25     # �
 python examples/e10_plot_trace.py runs/<폴더> --joints FL_thigh,FL_calf   # PNG 그래프 (matplotlib)
 ```
 
-## 9. 자주 하는 실수
+## 9. MuJoCo 와 실기 비교
+
+```bash
+# 오프라인: 실기 기록의 명령을 시뮬에 재생 (박스 위 지지 상태면 --fixed-base)
+python tools/compare_sim_real.py runs/real-sine-01 --joints FL_thigh,FR_thigh --fixed-base --out runs/compare-sine-01-fixed
+
+# 온라인: 실기와 쌍둥이를 같은 명령으로 동시에 움직이며 브라우저 차트 (thor 에서 실행, PC 에서 터널)
+docker/sdk.sh bash -c "source docker/dds_env.sh && python3 tools/live_compare.py --backend dds --program sine --joints thigh --amp 0.1 --seconds 40"
+ssh -L 8767:127.0.0.1:8090 thor     # 다른 창에서 → http://127.0.0.1:8767/
+
+# 로봇 없이 시험 (시뮬 vs 시뮬)
+python tools/live_compare.py --backend mujoco --program sine --seconds 10
+```
+
+차트 페이지는 관절 체크박스, 시간 창(5~60 s), 최근 창의 RMSE·진폭비·지연·토크 피크 표를 보여준다. 끝나면
+`runs/live-*/real.csv`, `sim.csv`, `summary.json` 이 남고 `examples/e10_plot_trace.py <run> --sim <run>/sim.csv` 로 정적 그래프를 만든다.
+쌍둥이 모델은 `--twin fixed`(몸통 공중 고정, 기본) 또는 `--twin ground --base-z 0.22`(바닥) 로 고른다.
+
+## 10. 자주 하는 실수
 
 - `send()` 없이 `read()` 만 반복 → 시뮬은 시간이 흐르지 않는다.
 - 목표각에 오프셋을 더해서 보냄 → 논리각만 쓴다. 오프셋은 `DdsBackend` 가 처리한다.

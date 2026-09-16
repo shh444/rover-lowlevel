@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Rover 실기 vs MuJoCo 실시간 비교</title>
+<style>
+  :root { --bg:#111; --fg:#eee; --grid:#333; --des:#bbb; --real:#4da3ff; --sim:#ffa34d; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--grid); }
+  header b { font-size:16px; }
+  .legend span { display:inline-block; margin-right:12px; }
+  .legend i { display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:5px; }
+  #joints label { margin-right:8px; white-space:nowrap; }
+  main { padding: 8px 16px; }
+  canvas { display:block; width:100%; height:200px; background:#161616; border:1px solid var(--grid); margin-bottom:8px; }
+  table { border-collapse:collapse; margin-top:6px; font-variant-numeric:tabular-nums; }
+  td, th { border:1px solid var(--grid); padding:3px 8px; text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  #status { color:#9f9; }
+</style>
+</head>
+<body>
+<header>
+  <b>실기 vs MuJoCo 쌍둥이</b>
+  <span id="status">연결 중…</span>
+  <span class="legend"><span><i style="background:var(--des)"></i>명령 q_des</span><span><i style="background:var(--real)"></i>실기</span><span><i style="background:var(--sim)"></i>MuJoCo</span></span>
+  <span>창 <select id="win"><option>5</option><option selected>10</option><option>20</option><option>60</option></select> s</span>
+  <span id="joints"></span>
+</header>
+<main>
+  <div id="charts"></div>
+  <canvas id="tau" height="200"></canvas>
+  <table id="stats"><thead><tr><th>관절 (최근 창)</th><th>RMSE 실기−시뮬</th><th>추종 RMSE 실기</th><th>추종 RMSE 시뮬</th><th>진폭비 실기</th><th>진폭비 시뮬</th><th>지연 실기</th><th>지연 시뮬</th><th>토크 피크 실기</th><th>토크 피크 시뮬</th></tr></thead><tbody></tbody></table>
+</main>
+<script>
+const JOINTS = ["FL_abad","FL_thigh","FL_calf","FR_abad","FR_thigh","FR_calf","RL_abad","RL_thigh","RL_calf","RR_abad","RR_thigh","RR_calf"];
+let selected = [], seq = 0, t = [], series = {}, maxKeep = 60 / 0.005;
+const chartsDiv = document.getElementById("charts");
+
+async function init() {
+  const meta = await (await fetch("/meta")).json();
+  selected = meta.default.slice();
+  const box = document.getElementById("joints");
+  JOINTS.forEach((name, j) => {
+    const l = document.createElement("label");
+    const c = document.createElement("input"); c.type = "checkbox"; c.checked = selected.includes(j);
+    c.onchange = () => { selected = JOINTS.map((_, k) => k).filter(k => box.querySelectorAll("input")[k].checked); reset(); };
+    l.appendChild(c); l.appendChild(document.createTextNode(name)); box.appendChild(l);
+  });
+  reset(); poll(); stats();
+}
+function reset() {
+  seq = 0; t = []; series = {};
+  chartsDiv.innerHTML = "";
+  selected.forEach(j => { const c = document.createElement("canvas"); c.id = "c" + j; c.height = 200; chartsDiv.appendChild(c); });
+}
+async function poll() {
+  try {
+    const d = await (await fetch(`/data?since=${seq}&joints=${selected.join(",")}`)).json();
+    seq = d.seq;
+    if (d.t.length) {
+      t.push(...d.t);
+      for (const [name, s] of Object.entries(d.series)) {
+        series[name] = series[name] || { des: [], real: [], sim: [], tau_real: [], tau_sim: [] };
+        for (const k of Object.keys(s)) series[name][k].push(...s[k]);
+      }
+      if (t.length > maxKeep) { const cut = t.length - maxKeep; t.splice(0, cut); for (const s of Object.values(series)) for (const k of Object.keys(s)) s[k].splice(0, cut); }
+    }
+    document.getElementById("status").textContent = (d.running ? "실행 중" : "종료: " + d.reason) + ` | 단계 ${d.phase} | 틱 ${d.seq}`;
+    draw();
+  } catch (e) { document.getElementById("status").textContent = "서버 연결 없음"; }
+  setTimeout(poll, 200);
+}
+async function stats() {
+  try {
+    const win = document.getElementById("win").value;
+    const s = await (await fetch(`/stats?window=${win}&joints=${selected.join(",")}`)).json();
+    const tb = document.querySelector("#stats tbody"); tb.innerHTML = "";
+    const f = (x, d = 3, unit = "") => x == null ? "-" : x.toFixed(d) + unit;
+    for (const [name, v] of Object.entries(s.joints)) {
+      tb.innerHTML += `<tr><td>${name}</td><td>${f(v.rmse_real_sim)}</td><td>${f(v.rmse_real_des)}</td><td>${f(v.rmse_sim_des)}</td>
+        <td>${f(v.amp_ratio_real, 2)}</td><td>${f(v.amp_ratio_sim, 2)}</td><td>${f(v.lag_real_ms, 0, " ms")}</td><td>${f(v.lag_sim_ms, 0, " ms")}</td>
+        <td>${f(v.tau_peak_real, 2)}</td><td>${f(v.tau_peak_sim, 2)}</td></tr>`;
+    }
+  } catch (e) {}
+  setTimeout(stats, 1000);
+}
+function drawChart(canvas, label, lines, tWin) {
+  const W = canvas.width = canvas.clientWidth * devicePixelRatio, H = canvas.height = canvas.clientHeight * devicePixelRatio;
+  const ctx = canvas.getContext("2d"); ctx.clearRect(0, 0, W, H);
+  const n = t.length; if (!n) return;
+  const t1 = t[n - 1], t0 = t1 - tWin;
+  let i0 = 0; while (i0 < n - 1 && t[i0] < t0) i0++;
+  let ymin = Infinity, ymax = -Infinity;
+  for (const l of lines) for (let i = i0; i < n; i++) { const y = l.data[i]; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
+  if (!isFinite(ymin)) return;
+  const pad = Math.max(0.02, (ymax - ymin) * 0.15); ymin -= pad; ymax += pad;
+  const L = 60 * devicePixelRatio, R = 10, T = 14 * devicePixelRatio, B = 22 * devicePixelRatio;
+  const X = v => L + (v - t0) / tWin * (W - L - R), Y = v => T + (ymax - v) / (ymax - ymin) * (H - T - B);
+  ctx.strokeStyle = "#333"; ctx.fillStyle = "#aaa"; ctx.font = `${11 * devicePixelRatio}px system-ui`; ctx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const y = ymin + (ymax - ymin) * k / 4; ctx.beginPath(); ctx.moveTo(L, Y(y)); ctx.lineTo(W - R, Y(y)); ctx.stroke(); ctx.fillText(y.toFixed(3), 4, Y(y) + 4); }
+  for (let k = 0; k <= 5; k++) { const x = t0 + tWin * k / 5; ctx.beginPath(); ctx.moveTo(X(x), T); ctx.lineTo(X(x), H - B); ctx.stroke(); ctx.fillText(x.toFixed(1) + "s", X(x) - 10, H - 6); }
+  ctx.fillStyle = "#ddd"; ctx.fillText(label, L + 6, T + 12 * devicePixelRatio);
+  for (const l of lines) {
+    ctx.strokeStyle = l.color; ctx.lineWidth = 1.6 * devicePixelRatio; ctx.setLineDash(l.dash ? [6, 4] : []);
+    ctx.beginPath();
+    for (let i = i0; i < n; i++) { const x = X(t[i]), y = Y(l.data[i]); i === i0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+function draw() {
+  const tWin = parseFloat(document.getElementById("win").value);
+  for (const j of selected) {
+    const s = series[JOINTS[j]]; if (!s) continue;
+    drawChart(document.getElementById("c" + j), JOINTS[j] + " [rad]",
+      [{ data: s.des, color: "#bbb", dash: true }, { data: s.real, color: "#4da3ff" }, { data: s.sim, color: "#ffa34d" }], tWin);
+  }
+  const j0 = selected[0]; const s0 = series[JOINTS[j0]];
+  if (s0) drawChart(document.getElementById("tau"), JOINTS[j0] + " 토크 [N·m]", [{ data: s0.tau_real, color: "#4da3ff" }, { data: s0.tau_sim, color: "#ffa34d" }], tWin);
+}
+window.addEventListener("resize", draw);
+(function frame() { draw(); requestAnimationFrame(() => setTimeout(frame, 100)); })();   // 첫 페인트·리사이즈 대비 주기적 재그리기
+init();
+</script>
+</body>
+</html>

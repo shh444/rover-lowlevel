@@ -48,7 +48,8 @@ class MujocoBackend:
 
     def __init__(self, xml_path=None, dt: float = 0.005, physics_dt: float = 0.001,
                  start: str = "lying", seed: int = 0, frames_dir=None, render_every: int = 0,
-                 size=(960, 540), fixed_base: bool = False):
+                 size=(960, 540), fixed_base: bool = False, init_q=None, init_base_z=None):
+        """init_q(12)·init_base_z 를 주면 start 대신 그 관절각·몸통 높이로 시작한다 (실기 기록 재생용)."""
         xml = Path(xml_path) if xml_path else find_default_xml()
         if xml is None or not xml.exists():
             raise FileNotFoundError(f"MJCF 없음: {xml} (--xml 또는 ROVER_VENDOR 로 지정. "
@@ -92,8 +93,12 @@ class MujocoBackend:
             self.d.qpos[:3] = [0.0, 0.0, 0.32]
             q0 = np.clip(Q_CROUCH, Q_LOWER, Q_UPPER) + rng.uniform(-0.3, 0.3, NUM_JOINTS)
             q0 = np.clip(q0, Q_LOWER, Q_UPPER)
+        if init_q is not None:
+            q0 = np.clip(np.asarray(init_q, dtype=float).reshape(NUM_JOINTS), Q_LOWER, Q_UPPER)
         if self.has_free:
             self.d.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
+            if init_base_z is not None:
+                self.d.qpos[2] = float(init_base_z)
         self.d.qpos[self.qa] = q0
         self.d.qvel[:] = 0.0
         mujoco.mj_forward(self.m, self.d)

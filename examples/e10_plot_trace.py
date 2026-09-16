@@ -30,6 +30,8 @@ def main():
     ap.add_argument("run", type=Path, help="run.py/예제의 기록 폴더 (trace.csv 가 있는 곳)")
     ap.add_argument("--joints", default="FL_thigh,FL_calf", help="쉼표로 구분한 관절 이름")
     ap.add_argument("--out", type=Path, default=None, help="PNG 경로 (기본 <run>/plot.png)")
+    ap.add_argument("--sim", type=Path, default=None,
+                    help="live_compare 의 sim.csv (q_<관절>, tau_<관절> 열) 를 MuJoCo 곡선으로 겹쳐 그린다")
     a = ap.parse_args()
     try:
         import matplotlib
@@ -40,6 +42,10 @@ def main():
         return 1
 
     d = load(a.run)
+    sim = None
+    if a.sim:
+        rows = list(csv.DictReader(open(a.sim, encoding="utf-8")))
+        sim = {k: np.array([float(r[k]) for r in rows]) for k in rows[0].keys()}
     joints = [j.strip() for j in a.joints.split(",") if j.strip()]
     for j in joints:
         if j not in JOINT_SHORT:
@@ -48,8 +54,11 @@ def main():
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
     for j in joints:
         axes[0].plot(d["t"], d[f"qdes_{j}"], "--", label=f"{j} q_des")
-        axes[0].plot(d["t"], d[f"q_{j}"], label=f"{j} q")
-        axes[1].plot(d["t"], d[f"tau_{j}"], label=f"{j} tau")
+        axes[0].plot(d["t"], d[f"q_{j}"], label=f"{j} q (real)" if sim else f"{j} q")
+        axes[1].plot(d["t"], d[f"tau_{j}"], label=f"{j} tau (real)" if sim else f"{j} tau")
+        if sim:
+            axes[0].plot(sim["t"], sim[f"q_{j}"], ":", label=f"{j} q (MuJoCo)")
+            axes[1].plot(sim["t"], sim[f"tau_{j}"], ":", label=f"{j} tau (MuJoCo)")
     axes[0].set_ylabel("angle [rad]")
     axes[1].set_ylabel("torque [N·m]")
     axes[2].plot(d["t"], d["grav_z"], label="gravity_z (body)")

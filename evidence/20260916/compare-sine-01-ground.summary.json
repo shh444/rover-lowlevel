@@ -1,0 +1,168 @@
+{
+  "real_run": "runs/real-sine-01",
+  "ticks": 1400,
+  "dt_s": 0.004999999999999893,
+  "driven_joints": [
+    "FL_thigh",
+    "FR_thigh",
+    "RL_thigh",
+    "RR_thigh"
+  ],
+  "sim": {
+    "xml": "/home/thor/rover-mujoco-poc/vendor/dobot_rover_simulation/dobot_sim2real/resources/mujoco/dobot_quad.xml",
+    "physics_dt": 0.001,
+    "init_base_z": 0.22,
+    "base_z_after_place": 0.23402630027839705,
+    "base_z_min": 0.16460897256849125,
+    "base_z_max": 0.23402630027839705,
+    "placement_drift_max_rad": 0.6855611196147764
+  },
+  "all_joints_rmse_rad": 0.12275355196818569,
+  "driven_joints_rmse_rad": 0.16969267185927614,
+  "per_joint": [
+    {
+      "joint": "FL_abad",
+      "driven": false,
+      "rmse_rad": 0.0758903111415046,
+      "maxabs_rad": 0.2590442688475723,
+      "tau_peak_real": 0.549,
+      "tau_peak_sim": 5.460952464351418,
+      "placement_drift_rad": 0.008869457063782837
+    },
+    {
+      "joint": "FL_thigh",
+      "driven": true,
+      "rmse_rad": 0.04729494321922015,
+      "maxabs_rad": 0.10693573342584503,
+      "tau_peak_real": 2.015,
+      "tau_peak_sim": 3.2247721649445737,
+      "placement_drift_rad": 0.061568315549149134,
+      "p2p_cmd": 0.2,
+      "p2p_real": 0.12334,
+      "p2p_sim": 0.13219075349727905,
+      "amp_ratio_real": 0.6167,
+      "amp_ratio_sim": 0.6609537674863952,
+      "lag_real_ms": 59.99999999999872,
+      "lag_sim_ms": 124.99999999999733,
+      "track_rmse_real": 0.029253239626456026,
+      "track_rmse_sim": 0.05774431395326471
+    },
+    {
+      "joint": "FL_calf",
+      "driven": false,
+      "rmse_rad": 0.017945913956655134,
+      "maxabs_rad": 0.03899101041610353,
+      "tau_peak_real": 0.256,
+      "tau_peak_sim": 2.2995902385230678,
+      "placement_drift_rad": 0.021851818398346823
+    },
+    {
+      "joint": "FR_abad",
+      "driven": false,
+      "rmse_rad": 0.07030656258583107,
+      "maxabs_rad": 0.21658314633417736,
+      "tau_peak_real": 0.33,
+      "tau_peak_sim": 9.212777078719766,
+      "placement_drift_rad": 0.010118012418649291
+    },
+    {
+      "joint": "FR_thigh",
+      "driven": true,
+      "rmse_rad": 0.07541565711822695,
+      "maxabs_rad": 0.25348488718585727,
+      "tau_peak_real": 1.429,
+      "tau_peak_sim": 7.3444222571051245,
+      "placement_drift_rad": 0.058862590010616174,
+      "p2p_cmd": 0.2,
+      "p2p_real": 0.13384000000000001,
+      "p2p_sim": 0.30599710763189697,
+      "amp_ratio_real": 0.6692,
+      "amp_ratio_sim": 1.5299855381594847,
+      "lag_real_ms": 64.99999999999861,
+      "lag_sim_ms": 144.9999999999969,
+      "track_rmse_real": 0.025876802124959058,
+      "track_rmse_sim": 0.08575250650942444
+    },
+    {
+      "joint": "FR_calf",
+      "driven": false,
+      "rmse_rad": 0.11535627061822154,
+      "maxabs_rad": 0.38301726643470446,
+      "tau_peak_real": 0.33,
+      "tau_peak_sim": 12.4159218030479,
+      "placement_drift_rad": 0.021137149022794288
+    },
+    {
+      "joint": "RL_abad",
+      "driven": false,
+      "rmse_rad": 0.06939511030843952,
+      "maxabs_rad": 0.1636303610341936,
+      "tau_peak_real": 0.33,
+      "tau_peak_sim": 4.877686256300138,
+      "placement_drift_rad": -0.1636303610341936
+    },
+    {
+      "joint": "RL_thigh",
+      "driven": true,
+      "rmse_rad": 0.2780138778865043,
+      "maxabs_rad": 0.7426551320246699,
+      "tau_peak_real": 1.502,
+      "tau_peak_sim": 19.400695134887034,
+      "placement_drift_rad": -0.6855611196147764,
+      "p2p_cmd": 0.2,
+      "p2p_real": 0.13540999999999997,
+      "p2p_sim": 0.8196627719326214,
+      "amp_ratio_real": 0.6770499999999998,
+      "amp_ratio_sim": 4.098313859663107,
+      "lag_real_ms": 64.99999999999861,
+      "lag_sim_ms": 59.99999999999872,
+      "track_rmse_real": 0.024628847911109676,
+      "track_rmse_sim": 0.27784545234678854
+    },
+    {
+      "joint": "RL_calf",
+      "driven": false,
+      "rmse_rad": 0.012830872683731625,
+      "maxabs_rad": 0.09274260738211382,
+      "tau_peak_real": 0.256,
+      "tau_peak_sim": 3.8243403793605113,
+      "placement_drift_rad": -0.005969351651183619
+    },
+    {
+      "joint": "RR_abad",
+      "driven": false,
+      "rmse_rad": 0.12349573653544647,
+      "maxabs_rad": 0.3228237184594055,
+      "tau_peak_real": 0.403,
+      "tau_peak_sim": 4.348925169976423,
+      "placement_drift_rad": 0.13020402900670613
+    },
+    {
+      "joint": "RR_thigh",
+      "driven": true,
+      "rmse_rad": 0.1731079496752952,
+      "maxabs_rad": 0.4693137680188382,
+      "tau_peak_real": 1.062,
+      "tau_peak_sim": 12.911533140605009,
+      "placement_drift_rad": -0.4693137680188382,
+      "p2p_cmd": 0.19999999999999998,
+      "p2p_real": 0.15711999999999998,
+      "p2p_sim": 0.6017788547362173,
+      "amp_ratio_real": 0.7856,
+      "amp_ratio_sim": 3.008894273681087,
+      "lag_real_ms": 69.99999999999851,
+      "lag_sim_ms": 54.99999999999883,
+      "track_rmse_real": 0.022048108605307364,
+      "track_rmse_sim": 0.17500970663240006
+    },
+    {
+      "joint": "RR_calf",
+      "driven": false,
+      "rmse_rad": 0.1451751221155335,
+      "maxabs_rad": 0.44519729005352227,
+      "tau_peak_real": 0.33,
+      "tau_peak_sim": 13.22627437436022,
+      "placement_drift_rad": -0.24614379381387008
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Rover 저수준 제어 실습
+
+Dobot Rover(Quad) SDK 의 저수준 제어(`rt/lower/cmd` 발행, `rt/lower/state` 구독)를 **MuJoCo 시뮬레이션과
+실기에서 같은 코드로** 돌리는 실습 패키지의 문서다. 소스와 실행 기록은
+[github.com/shh444/rover-lowlevel](https://github.com/shh444/rover-lowlevel) 에 있다.
+
+- 2026-09-16 실기(miniQuad)에서 댐핑 → 자세 유지 → 허벅지 사인 구동을 확인했다.
+- 로봇 없이도 MuJoCo, 가짜 SDK(가상 로봇), 실제 CycloneDDS 왕복(C++ 가상 로봇)으로 검증할 수 있다.
+- 어떤 종료 경로(정상, Ctrl+C, SIGTERM, 가드 이상)든 마지막 명령은 댐핑이다.
+
+```{toctree}
+:maxdepth: 2
+:caption: 문서
+
+overview
+USAGE
+examples
+realrobot
+comparison
+verification
+api/index
+```

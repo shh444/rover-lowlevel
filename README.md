@@ -1,5 +1,6 @@
 # Rover 저수준(DDS) 관절 제어 실습
 
+<!-- doc:overview:start -->
 Dobot Rover(Quad) SDK 의 저수준 제어(E9: `rt/lower/cmd` 발행 + `rt/lower/state` 구독)를
 **MuJoCo 시뮬레이션과 실기(DDS)에서 같은 코드로** 돌리는 실습 패키지다.
 Dobot 공식 dobot_sim2real 의 모델·기립 절차와 SDK E9 예제를 합쳤고, 2026-09-16 실기(miniQuad)에서
@@ -40,6 +41,8 @@ rover_lowlevel/
 ├── tools/
 │   ├── trace_stats.py       trace.csv 단계별 요약 (오차·토크·몸체 높이)
 │   ├── preflight_real.py    실기 연결 전 읽기 전용 점검 (네트워크·DDS 설정·상태 수신·mode·IMU)
+│   ├── compare_sim_real.py  실기 기록의 명령을 MuJoCo 에 재생해 관절각·토크·지연·진폭 비교 (오프라인)
+│   ├── live_compare.py/.html  실기와 MuJoCo 쌍둥이를 같은 명령으로 동시에 움직이며 브라우저 실시간 차트 비교
 │   └── virtual_robot_dds/   C++ 가상 로봇: 실제 SDK 로 rt/lower/state 발행·rt/lower/cmd 구독 (컨테이너에서 build.sh)
 ├── docker/
 │   ├── Dockerfile           Ubuntu 22.04 + Python 3.10 + SDK 0.23.3 (thor 에서 DDS 를 쓰기 위한 컨테이너)
@@ -90,6 +93,8 @@ MUJOCO_GL=egl $PY run.py --backend mujoco --program hold --start standing --kp 6
 
 기록: `trace.csv`(틱마다 q, dq, q_des, tau, 중력 z, 몸체 높이), `summary.json`, `snapshot_*.jpg`.
 
+<!-- doc:overview:end -->
+<!-- doc:realrobot:start -->
 ## 실기(DDS) 로 실행
 
 SDK 문서(E9)의 절차를 코드가 강제한다. 실행기는 `192.168.5.2:50051`(주 제어기 gRPC)이 아직 응답하면
@@ -137,6 +142,7 @@ python3 run.py --backend dds --program damp --duration 3     # 이후 hold → s
 `rt/lower/state` 수신률·모터 mode/온도·논리 관절각·IMU 중력 방향을 점검하고 JSON 보고서를 남긴다.
 같은 도구를 `PYTHONPATH=tests/fake_dds` 로 돌리면 가상 로봇으로 자체 시험이 된다.
 
+<!-- doc:realrobot:end -->
 ## 예제 (examples/)
 
 SDK 의 e1~e9 처럼 짧은 스크립트다. `lowlevel.runtime.Session` 이 200 Hz 페이싱·가드·Ctrl+C·안전 종료를 맡아
@@ -166,6 +172,7 @@ with Session(io, dt=0.005, realtime=True, exit_mode="damp") as s:   # 블록을 
 
 패키지를 라이브러리처럼 쓰는 방법(백엔드·명령·가드·Program 작성·실기 절차·기록 분석)은 [docs/USAGE.md](docs/USAGE.md) 에 정리했다.
 
+<!-- doc:pitfalls:start -->
 ## 흔히 막히는 지점 (다른 환경에서 저수준 제어가 안 될 때)
 
 이번에 실기까지 된 이유는 로봇이 특별해서가 아니라 아래 함정을 하나씩 피했기 때문이다. 순서대로 확인한다.
@@ -183,6 +190,8 @@ with Session(io, dt=0.005, realtime=True, exit_mode="damp") as s:   # 블록을 
 | 9 | 12관절을 16슬롯 `ABS2HW` 에 넣지 않거나 `MOTOR_OFFSET` 누락 | 목표가 엉뚱한 곳 → 큰 토크·이상 자세 | E9 표 그대로, 고수준 `jpos_leg` 와 대조해 thigh/calf 일치 확인 |
 | 10 | 한 번만 보내거나 kp 를 켠 채 프로세스 종료 | 반응 없음 또는 마지막 명령이 남음 | 200 Hz 연속 발행, 어떤 종료든 댐핑 1초로 마무리 |
 
+<!-- doc:pitfalls:end -->
+<!-- doc:options:start -->
 ## 옵션 요약
 
 | 옵션 | 기본 | 설명 |
@@ -198,6 +207,8 @@ with Session(io, dt=0.005, realtime=True, exit_mode="damp") as s:   # 블록을 
 | `--start` | lying | MuJoCo 초기 자세 (`standing` 이면 서 있는 상태) |
 | `--force --yes` | | 실기 gRPC 응답 검사·체크리스트 생략 (권장하지 않음) |
 
+<!-- doc:options:end -->
+<!-- doc:verification:start -->
 ## 확인된 것 / 확인되지 않은 것 (2026-09-16, thor)
 
 기록 요약은 `python tools/trace_stats.py runs/<폴더> [--joint FL_thigh]` 로 본다.
@@ -272,8 +283,24 @@ abad 0.05 rad(2.9°)는 현재 자세 기준 상대 동작(`hold`, `sine`)에는
 증적: `evidence/20260916/real-*.json`, `real-sine-01.trace.csv`. `standup` 과 12관절 사인(E9 진폭 0.2)은 아직 실기에서 돌리지 않았다.
 kill_robot 이후 고수준 앱/제어기를 다시 쓰려면 로봇을 재부팅해야 한다.
 
+### MuJoCo vs 실기 (2026-09-16, 몸통을 박스에 올려 다리를 띄운 상태)
+
+실기 사인 구동의 명령열을 몸통 고정 MuJoCo 모델에 그대로 재생(`tools/compare_sim_real.py --fixed-base`)하고, 같은 동작을
+40 s 동안 실시간으로 쌍둥이와 나란히 돌려(`tools/live_compare.py`) 비교했다. 두 방법의 수치는 같다.
+
+| 항목 | MuJoCo | 실기 |
+|---|---|---|
+| 허벅지 진폭비 (움직인 폭 / 명령 폭) | 0.97~1.01 | 0.62~0.78 (앞다리가 더 작음) |
+| 명령 대비 지연 | 45 ms | 60~70 ms |
+| 댐핑(kp 0) 중 다리 | 중력 평형점으로 흔들림 | 전혀 움직이지 않음 (정지 마찰) |
+| 관절각 차이 RMSE (실기−시뮬, 구동 관절) | 0.02~0.05 rad | |
+
+실기 관절에는 모델(`frictionloss 0.02`)보다 훨씬 큰 마찰이 있어 0.9 Hz 에서 명령의 ~30% 를 덜 움직인다. 자세한 표·그래프·해석은
+[docs/comparison.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/comparison.md) 에 있다.
+
 - 가드는 실습용 최소 방어선이다. 전원 차단 등 독립된 비상정지를 항상 준비한다.
 
+<!-- doc:verification:end -->
 ## 라이선스와 출처
 
 이 저장소의 코드는 MIT 라이선스다 (`LICENSE`). 매핑 표·QoS 설정은 Dobot Quad SDK(MIT), 기립 절차·게인·자세와

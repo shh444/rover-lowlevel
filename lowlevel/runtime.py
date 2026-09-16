@@ -1,12 +1,13 @@
 """실행 보조 도구: 벽시계 페이싱, 신호(Ctrl+C/SIGTERM/SIGHUP) 처리, CSV 기록, 안전 종료, 실기 확인 절차,
-그리고 이것들을 한 번에 묶은 Session. run.py 와 examples/ 가 함께 쓴다.
+그리고 이것들을 한 번에 묶은 Session. run.py 와 examples/ 가 함께 쓴다::
 
     io = make_backend("mujoco")                     # 또는 make_backend("dds", yes=True)
     state0 = io.wait_ready()
     with Session(io, dt=0.005, realtime=False) as s:
         for t, state in s.run(seconds=3.0):
             s.send(JointCmd.damping(3.0, state.q))
-    # with 블록을 빠져나가면(정상 종료, Ctrl+C, 안전 가드 이상 모두) 반드시 안전 종료(엎드림/댐핑)가 실행된다.
+
+with 블록을 빠져나가면(정상 종료, Ctrl+C, 안전 가드 이상 모두) 반드시 안전 종료(엎드림/댐핑)가 실행된다.
 """
 from __future__ import annotations
 
