@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-os.environ.setdefault("MUJOCO_GL", "egl")   # SSH/헤드리스 렌더링. import 전에 설정해야 한다.
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("MUJOCO_GL", "egl")   # SSH/헤드리스 렌더링. import 전에 설정해야 한다 (Windows 는 기본 glfw)
 import mujoco
 import numpy as np
 
