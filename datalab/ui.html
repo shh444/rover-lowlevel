@@ -30,6 +30,8 @@
   .chip { display:inline-block; padding:2px 9px; margin:2px 4px 2px 0; border:1px solid #555; border-radius:12px; cursor:pointer; color:#bbb; font-size:12px; }
   .chip.on { background:#2a3f5a; border-color:#4da3ff; color:#fff; }
   .cards { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+  .pill { display:inline-block; padding:3px 10px; margin:2px 6px 2px 0; border:1px solid var(--grid); border-radius:12px; font-size:12px; cursor:pointer; background:var(--panel); }
+  .pill b.sim { color:var(--a); } .pill b.real { color:var(--b); } .pill b.isaac { color:var(--c); } .pill b.imported { color:#c9a; }
   .card { background:var(--panel); border:1px solid var(--grid); border-radius:6px; padding:8px 12px; min-width:150px; }
   .card .v { font-size:20px; font-weight:600; } .card .k { color:var(--muted); font-size:12px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
@@ -87,6 +89,7 @@
 
 <section id="runs">
   <div class="row"><button class="sm" id="btn-refresh">새로고침</button> <span class="muted">A/B/C 로 비교 대상을 고르고 "비교" 탭으로. 파랑=sim, 주황=real, 초록=isaac.</span></div>
+  <div class="row" id="overview" title="로봇별 기록 수 (출처별). 클릭하면 그 로봇으로 필터"></div>
   <table id="runs-table"><thead><tr><th class="l">기록</th><th class="l">로봇</th><th class="l">출처</th><th class="l">프로그램</th><th class="l">파라미터</th><th>관절</th><th>틱</th><th class="l">상태</th><th class="l">태그</th><th class="l">동작</th></tr></thead><tbody></tbody></table>
   <h3>기록 보기 <span id="detail-title" class="muted"></span></h3>
   <div class="row"><label>관절 <input id="d-joints" type="text" placeholder="비우면 구동 관절"></label><label><input id="d-rel" type="checkbox"> 시작 자세 기준</label></div>
@@ -252,6 +255,9 @@ async function loadRuns() {
 function renderRuns() {
   const list = filteredRuns();
   $("#count").textContent = `${list.length} / ${runsCache.length} 기록`;
+  const ov = {}; for (const r of runsCache) { (ov[r.robot] ??= {})[r.label] = ((ov[r.robot] ??= {})[r.label] || 0) + 1; }
+  $("#overview").innerHTML = Object.entries(ov).sort().map(([rb, m]) => `<span class="pill" data-robot="${rb}"><b>${rb}</b> ${Object.entries(m).sort().map(([l, n]) => `<b class="${l}">${l} ${n}</b>`).join(" · ")}</span>`).join("") || "<span class='muted'>기록 없음</span>";
+  document.querySelectorAll("#overview .pill").forEach(el => el.onclick = () => { const rs = $("#flt-robot"); rs.value = rs.value === el.dataset.robot ? "" : el.dataset.robot; renderRuns(); fillCompareSelects(); });
   const tb = $("#runs-table tbody"); tb.innerHTML = "";
   for (const r of list) {
     const p = r.params || {}; const ps = Object.entries(p).filter(([k, v]) => v != null && !["exit", "start", "xml", "csv"].includes(k)).map(([k, v]) => `${k}=${v}`).join(" ");
