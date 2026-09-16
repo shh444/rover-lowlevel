@@ -34,7 +34,8 @@ def utc_now() -> str:
 
 
 def label_of(source: str) -> str:
-    return "real" if source == "dds" else "sim"
+    """dds → real, mujoco → sim, isaac → isaac (시뮬레이터끼리도 구분한다)."""
+    return {"dds": "real", "mujoco": "sim", "isaac": "isaac"}.get(source, "sim" if source else "?")
 
 
 # ---------------- meta.json ----------------
@@ -125,6 +126,12 @@ def list_runs(root: Path) -> list[dict]:
         meta = read_meta(d)
         meta["has_sim"] = (d / "sim.csv").exists()
         meta["trace_bytes"] = (d / "trace.csv").stat().st_size
+        if meta.get("status") == "running" or not meta.get("ticks"):
+            try:                                                  # 실행 중이면 지금까지 기록된 틱 수
+                with open(d / "trace.csv", "rb") as f:
+                    meta["ticks"] = max(0, sum(1 for _ in f) - 1)
+            except OSError:
+                pass
         out.append(meta)
     return out
 

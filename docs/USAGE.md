@@ -42,6 +42,7 @@ print(s.reason)                                                    # completed /
 from lowlevel.backend_mujoco import MujocoBackend
 io = MujocoBackend(start="standing")            # "lying"(기본, 엎드린 채 낙하) | "standing"
 io = MujocoBackend(fixed_base=True)             # 몸통을 공중에 고정 = '지지된 상태에서 다리 시험'
+io = MujocoBackend(viewer=True)                 # 뷰어 창 (노트북). run.py 는 --viewer (realtime 자동)
 io = MujocoBackend(xml_path=..., physics_dt=0.001, dt=0.005, frames_dir="frames", render_every=40)
 io.snapshot("shot.jpg")                          # EGL 렌더 (MUJOCO_GL=egl)
 tau_g = io.nominal_gravity(state.q, state.quat_wxyz)   # 명목 모델 중력 토크 g(q) → tau 피드포워드용

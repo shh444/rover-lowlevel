@@ -33,7 +33,8 @@ from lowlevel.safety import Guard, SafetyAbort                                  
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--backend", choices=("mujoco", "dds"), required=True)
+    p.add_argument("--backend", choices=("mujoco", "dds", "isaac"), required=True,
+                   help="mujoco=MuJoCo 시뮬, dds=실기, isaac=Isaac Sim (실험적, Python 3.11 + Isaac Sim 5.x)")
     p.add_argument("--program", choices=("standup", "sine", "hold", "damp"), required=True)
     p.add_argument("--duration", type=float, default=5.0,
                    help="본동작 시간(s). standup 은 선 뒤 유지하는 시간, sine/hold/damp 는 동작 시간")
@@ -57,10 +58,13 @@ def parse_args(argv=None):
     s.add_argument("--kd", type=float, default=KD_SINE, help="sine/hold kd (E9 기본 1.2)")
     m = p.add_argument_group("mujoco")
     m.add_argument("--xml", type=Path, default=None, help="dobot_quad.xml 경로")
+    m.add_argument("--urdf", type=Path, default=None, help="(isaac) dobot_quad_ros.urdf 경로")
+    m.add_argument("--fixed-base", action="store_true", help="(mujoco/isaac) 몸통을 공중에 고정 (지지된 로봇 시험)")
     m.add_argument("--start", choices=("lying", "standing"), default="lying")
     m.add_argument("--physics-dt", type=float, default=0.001)
     m.add_argument("--seed", type=int, default=0)
     m.add_argument("--realtime", action="store_true", help="시뮬도 벽시계에 맞춰 실행")
+    m.add_argument("--viewer", action="store_true", help="MuJoCo 뷰어 창을 열어 지켜본다 (realtime 자동 적용)")
     m.add_argument("--snapshot", action="store_true", help="프로그램 종료·최종 시점 이미지 저장(EGL)")
     m.add_argument("--render-every", type=int, default=0, help="N 틱마다 frames/ 에 이미지 저장")
     d = p.add_argument_group("dds")
@@ -76,9 +80,13 @@ def make_backend(args, out: Path):
     if args.backend == "mujoco":
         from lowlevel.backend_mujoco import MujocoBackend
         return MujocoBackend(xml_path=args.xml, dt=args.dt, physics_dt=args.physics_dt,
-                             start=args.start, seed=args.seed,
+                             start=args.start, seed=args.seed, fixed_base=args.fixed_base,
                              frames_dir=(out / "frames") if args.render_every else None,
-                             render_every=args.render_every)
+                             render_every=args.render_every, viewer=args.viewer)
+    if args.backend == "isaac":
+        from lowlevel.backend_isaac import IsaacBackend
+        return IsaacBackend(urdf_path=args.urdf, dt=args.dt, physics_dt=args.physics_dt, start=args.start,
+                            fixed_base=args.fixed_base, headless=not args.viewer)
     from lowlevel.backend_dds import DdsBackend
     return DdsBackend(args.dds_config, timeout=args.state_wait)
 
@@ -99,15 +107,21 @@ def main(argv=None) -> int:
     if args.backend == "dds":
         args.realtime = True
         confirm_real_robot(args.robot_ip, force=args.force, yes=args.yes)
+    if args.viewer:
+        args.realtime = True
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or (ROOT / "runs" / f"{stamp}-{args.backend}-{args.program}")
     out.mkdir(parents=True, exist_ok=True)
     write_meta(out, source=args.backend, program=args.program, dt=args.dt, tags=args.tag, note=args.note,
                params={k: getattr(args, k) for k in ("duration", "amp", "freq", "joints", "kp", "kd", "start", "exit")})
-    io = make_backend(args, out)
-    print(f"[준비] backend={io.name} program={args.program} dt={args.dt * 1e3:.1f}ms "
-          f"realtime={args.realtime} out={out}")
-    state = io.wait_ready()
+    try:
+        io = make_backend(args, out)
+        print(f"[준비] backend={io.name} program={args.program} dt={args.dt * 1e3:.1f}ms "
+              f"realtime={args.realtime} out={out}")
+        state = io.wait_ready()
+    except Exception as exc:                       # 백엔드 준비 실패: 기록에 남기고 그대로 올린다
+        update_meta(out, status=f"error:{type(exc).__name__}:{exc}"[:200], ended_at=utc_now())
+        raise
     print(f"[준비] 첫 상태: q={fmt(state.q)} grav_z={state.gravity_body()[2]:+.3f}")
     if state.motor_mode is not None:
         print(f"[준비] 모터 mode(논리 12개)={state.motor_mode.tolist()} 온도={state.extra.get('temp_hw')}")

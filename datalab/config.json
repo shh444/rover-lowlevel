@@ -1,8 +1,10 @@
 {
   "_comment": "datalab/server.py 실행 명령과 한계. commands 의 각 항목 뒤에 run.py 인자가 붙는다. 실기(dds)는 SDK 가 있는 환경(thor 컨테이너)에서만 동작한다.",
   "commands": {
-    "dds": ["docker/sdk.sh", "bash", "-c", "source docker/dds_env.sh > /dev/null && exec python3 run.py \"$@\"", "_"]
+    "dds": ["docker/sdk.sh", "bash", "-c", "source docker/dds_env.sh > /dev/null && exec python3 run.py \"$@\"", "_"],
+    "_isaac_example": ["C:/path/to/.venv-isaac/Scripts/python.exe", "run.py"]
   },
+  "_isaac_note": "Isaac Sim 을 쓰려면 위 _isaac_example 을 isaac 으로 바꾸고 Python 3.11 + Isaac Sim 5.x 환경의 python 경로를 넣는다",
   "real_confirm": "REAL",
   "limits": {"amp_max": 0.3, "kp_max": 100.0, "kd_max": 5.0, "duration_max": 600.0}
 }

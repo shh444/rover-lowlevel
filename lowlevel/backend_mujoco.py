@@ -50,8 +50,10 @@ class MujocoBackend:
 
     def __init__(self, xml_path=None, dt: float = 0.005, physics_dt: float = 0.001,
                  start: str = "lying", seed: int = 0, frames_dir=None, render_every: int = 0,
-                 size=(960, 540), fixed_base: bool = False, init_q=None, init_base_z=None):
-        """init_q(12)·init_base_z 를 주면 start 대신 그 관절각·몸통 높이로 시작한다 (실기 기록 재생용)."""
+                 size=(960, 540), fixed_base: bool = False, init_q=None, init_base_z=None,
+                 viewer: bool = False):
+        """init_q(12)·init_base_z 를 주면 start 대신 그 관절각·몸통 높이로 시작한다 (실기 기록 재생용).
+        viewer=True 면 MuJoCo 뷰어 창을 열어 틱마다 동기화한다 (노트북 등 화면이 있는 곳, realtime 페이싱과 함께)."""
         xml = Path(xml_path) if xml_path else find_default_xml()
         if xml is None or not xml.exists():
             raise FileNotFoundError(f"MJCF 없음: {xml} (--xml 또는 ROVER_VENDOR 로 지정. "
@@ -115,6 +117,13 @@ class MujocoBackend:
             self.frames_dir.mkdir(parents=True, exist_ok=True)
         self._renderer = None
         self._cam = None
+        self._viewer = None
+        if viewer:
+            from mujoco import viewer as mj_viewer          # 'import mujoco.viewer' 는 이 함수 안에서 mujoco 를 지역 변수로 만든다
+            self._viewer = mj_viewer.launch_passive(self.m, self.d)
+            with self._viewer.lock():
+                self._viewer.cam.distance, self._viewer.cam.azimuth, self._viewer.cam.elevation = 1.8, 135, -20
+                self._viewer.cam.lookat[:] = self.base_pos()
 
     # ---- 공통 인터페이스 ----
     def wait_ready(self) -> State:
@@ -154,6 +163,13 @@ class MujocoBackend:
             mujoco.mj_step(self.m, d)
         self.last_tau = tau
         self.tick += 1
+        if self._viewer is not None:
+            if not self._viewer.is_running():
+                raise KeyboardInterrupt            # 뷰어 창을 닫으면 안전 종료 경로로
+            if self.tick % 4 == 0:                  # 50 Hz 화면 갱신
+                with self._viewer.lock():
+                    self._viewer.cam.lookat[:] = self.base_pos()
+                self._viewer.sync()
         if self.render_every and self.tick % self.render_every == 0:
             self.snapshot(self.frames_dir / f"{self.tick:06d}.jpg")
 
@@ -179,6 +195,12 @@ class MujocoBackend:
             return False
 
     def close(self) -> None:
+        if self._viewer is not None:
+            try:
+                self._viewer.close()
+            except Exception:
+                pass
+            self._viewer = None
         if self._renderer is not None:
             try:
                 self._renderer.close()

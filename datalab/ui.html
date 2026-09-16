@@ -22,6 +22,7 @@
   td, th { border:1px solid var(--grid); padding:4px 8px; text-align:right; white-space:nowrap; }
   th:first-child, td:first-child, td.l, th.l { text-align:left; }
   tr.sim td:first-child { border-left:4px solid var(--a); } tr.real td:first-child { border-left:4px solid var(--b); }
+  tr.isaac td:first-child { border-left:4px solid #6c6; }
   canvas { display:block; width:100%; height:190px; background:#161616; border:1px solid var(--grid); margin-bottom:8px; }
   pre { background:#0d0d0d; border:1px solid var(--grid); padding:8px; max-height:180px; overflow:auto; font-size:12px; color:#bbb; }
   .legend span { margin-right:14px; } .legend i { display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:5px; }
@@ -53,6 +54,8 @@
     <label>kp <input id="f-kp" type="number" value="30" step="1"></label>
     <label>kd <input id="f-kd" type="number" value="1.2" step="0.1"></label>
     <label>시뮬 시작 자세 <select id="f-start"><option>lying</option><option>standing</option></select></label>
+    <label><input id="f-viewer" type="checkbox"> 뷰어 창</label>
+    <label><input id="f-fixed" type="checkbox"> 몸통 고정</label>
   </div>
   <div class="row">
     <label>태그 <input id="f-tags" type="text" placeholder="쉼표로 구분"></label>
@@ -159,10 +162,19 @@ function drawRunSeries(container, data, withSim) {
 
 // ---------- 수집 ----------
 $("#f-backend").onchange = () => { $("#confirm-wrap").style.display = $("#f-backend").value === "dds" ? "" : "none"; };
+(async () => {   // 서버 설정에 있는 백엔드만 보이게 (isaac 은 config.json 에 명령이 있을 때만)
+  try {
+    const d = await (await fetch("/api/jobs")).json();
+    const names = { mujoco: "시뮬 (MuJoCo)", dds: "실기 (DDS)", isaac: "Isaac Sim" };
+    const sel = $("#f-backend"); sel.innerHTML = "";
+    for (const b of d.backends) { const o = document.createElement("option"); o.value = b; o.textContent = names[b] || b; sel.appendChild(o); }
+  } catch (e) {}
+})();
 $("#btn-start").onclick = async () => {
   const body = { backend: $("#f-backend").value, program: $("#f-program").value, duration: +$("#f-duration").value,
     amp: +$("#f-amp").value, freq: +$("#f-freq").value, joints: $("#f-joints").value, kp: +$("#f-kp").value, kd: +$("#f-kd").value,
-    start: $("#f-start").value, tags: $("#f-tags").value.split(",").map(s => s.trim()).filter(Boolean), note: $("#f-note").value,
+    start: $("#f-start").value, viewer: $("#f-viewer").checked, fixed_base: $("#f-fixed").checked,
+    tags: $("#f-tags").value.split(",").map(s => s.trim()).filter(Boolean), note: $("#f-note").value,
     confirm: $("#f-confirm").value };
   if (body.backend === "dds" && !confirm("실기 로봇에 명령을 보냅니다. kill_robot 을 했고, 로봇이 지지되어 있고, 주변이 비어 있습니까?")) return;
   const r = await (await fetch("/api/start", { method: "POST", body: JSON.stringify(body) })).json();
@@ -196,7 +208,7 @@ async function loadRuns() {
   const tb = $("#runs-table tbody"); tb.innerHTML = "";
   for (const r of d.runs) {
     const p = r.params || {}; const ps = Object.entries(p).filter(([k, v]) => v != null && k !== "exit" && k !== "start").map(([k, v]) => `${k}=${v}`).join(" ");
-    const tr = document.createElement("tr"); tr.className = r.label === "real" ? "real" : (r.label === "sim" ? "sim" : "");
+    const tr = document.createElement("tr"); tr.className = ["real", "sim", "isaac"].includes(r.label) ? r.label : "";
     tr.innerHTML = `<td class="l">${r.id}</td><td class="l">${r.label} (${r.source})</td><td class="l">${r.program}</td><td class="l muted">${ps}</td>
       <td>${r.ticks ?? "-"}</td><td class="l ${r.status === "completed" ? "ok" : (r.status === "running" ? "" : "bad")}">${r.status}</td>
       <td class="l">${(r.tags || []).join(", ")}${r.note ? " · " + r.note : ""}</td>

@@ -67,7 +67,11 @@ class Interrupts:
 
 
 class Pacer:
-    """벽시계 페이싱. enabled=False 면 최대 속도로 돈다(시뮬 시험)."""
+    """벽시계 페이싱. enabled=False 면 최대 속도로 돈다(시뮬 시험).
+
+    시계는 time.perf_counter() 를 쓴다: Python 3.12 까지 Windows 의 time.monotonic() 은 분해능이 ~15.6 ms 라
+    5 ms 주기를 잴 수 없다. Windows 는 sleep 분해능도 거칠어 마지막 2 ms 는 스핀 대기한다.
+    """
 
     def __init__(self, dt: float, enabled: bool = True):
         self.dt, self.enabled = float(dt), bool(enabled)
@@ -78,12 +82,19 @@ class Pacer:
     def wait(self, tick: int) -> None:
         if not self.enabled:
             return
+        clock = time.perf_counter
         if self.t0 is None:
-            self.t0 = time.monotonic()
+            self.t0 = clock()
         target = self.t0 + tick * self.dt
-        now = time.monotonic()
+        now = clock()
         if now < target:
-            time.sleep(target - now)
+            if os.name == "nt":
+                if target - now > 0.002:
+                    time.sleep(target - now - 0.002)
+                while clock() < target:
+                    pass
+            else:
+                time.sleep(target - now)
         else:
             late = now - target
             self.max_late = max(self.max_late, late)
@@ -157,6 +168,9 @@ def make_backend(name: str, *, read_only: bool = False, yes: bool = False, force
     if name == "mujoco":
         from .backend_mujoco import MujocoBackend
         return MujocoBackend(dt=dt, **mujoco_kw)
+    if name == "isaac":
+        from .backend_isaac import IsaacBackend
+        return IsaacBackend(dt=dt, **mujoco_kw)
     if name == "dds":
         from .backend_dds import DdsBackend
         if not read_only:

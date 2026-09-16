@@ -11,9 +11,13 @@ git clone https://github.com/shh444/rover-lowlevel.git && cd rover-lowlevel
 pip install -r requirements.txt
 # MuJoCo 모델은 Dobot 공식 저장소에서 받는다 (vendor/ 에 두면 자동 인식, 다른 곳이면 ROVER_VENDOR=경로)
 git clone --filter=blob:none --sparse https://github.com/Dobot-Team/dobot_rover_simulation.git vendor/dobot_rover_simulation
-git -C vendor/dobot_rover_simulation sparse-checkout set dobot_sim2real/resources
+git -C vendor/dobot_rover_simulation sparse-checkout set dobot_sim2real/resources dobot_rl_gym/resources
 python examples/e4_sine_joint.py --backend mujoco      # 로봇 없이 바로
+python run.py --backend mujoco --program standup --duration 3 --viewer     # 뷰어 창으로 지켜보기 (노트북)
+python datalab/server.py --port 8095                    # 데이터 플랫폼 대시보드 http://127.0.0.1:8095/
 ```
+
+백엔드: `mujoco`(시뮬), `dds`(실기), `isaac`(Isaac Sim, 실험적 · [docs/isaac.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/isaac.md)).
 
 | 출처 | 그대로 가져온 것 |
 |---|---|

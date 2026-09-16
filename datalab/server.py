@@ -91,16 +91,20 @@ class Jobs:
             raise ValueError(f"amp≤{lim['amp_max']}, kp≤{lim['kp_max']}, kd≤{lim['kd_max']} 이어야 합니다")
         joints = str(req.get("joints", "thigh")).replace(" ", "") or "thigh"
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        label = "real" if backend == "dds" else "sim"
+        label = {"dds": "real", "mujoco": "sim", "isaac": "isaac"}.get(backend, backend)
         run_id = f"{stamp}-{label}-{program}"
         out = self.root / run_id
         out.mkdir(parents=True, exist_ok=True)
         args = ["--backend", backend, "--program", program, "--duration", str(duration), "--out", str(out),
                 "--amp", str(amp), "--freq", str(freq), "--joints", joints, "--kp", str(kp), "--kd", str(kd)]
-        if backend == "mujoco" and req.get("start") in ("lying", "standing"):
+        if backend in ("mujoco", "isaac") and req.get("start") in ("lying", "standing"):
             args += ["--start", req["start"]]
-        if backend == "mujoco" and self.cfg.get("sim_realtime", True):
+        if backend in ("mujoco", "isaac") and self.cfg.get("sim_realtime", True):
             args += ["--realtime"]
+        if backend in ("mujoco", "isaac") and req.get("viewer"):
+            args += ["--viewer"]                    # 서버가 도는 PC 에 뷰어 창이 뜬다 (노트북에서 쓸 때)
+        if backend in ("mujoco", "isaac") and req.get("fixed_base"):
+            args += ["--fixed-base"]
         if backend == "dds":
             args += ["--yes"]
         for tag in req.get("tags", []) or []:
