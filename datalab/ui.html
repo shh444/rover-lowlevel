@@ -331,11 +331,13 @@ function renderCompare() {
   // 요약 카드
   const cards = $("#c-cards"); cards.innerHTML = "";
   for (const [i, p] of pairs.entries()) {
-    const drivenA = Object.values(p.per_joint).map(v => v.amp_ratio_a).filter(x => x != null), drivenB = Object.values(p.per_joint).map(v => v.amp_ratio_b).filter(x => x != null);
-    const lagA = Object.values(p.per_joint).map(v => v.lag_a_ms).filter(x => x != null), lagB = Object.values(p.per_joint).map(v => v.lag_b_ms).filter(x => x != null);
+    // 진폭비·지연 요약은 명령이 실제로 움직인 관절(명령 폭 ≥ 0.05 rad)만 평균한다 (붙잡기만 한 관절의 잡음 제외)
+    const movedA = Object.values(p.per_joint).filter(v => (v.p2p_qdes_a ?? 0) >= 0.05), movedB = Object.values(p.per_joint).filter(v => (v.p2p_qdes_b ?? 0) >= 0.05);
+    const drivenA = movedA.map(v => v.amp_ratio_a).filter(x => x != null), drivenB = movedB.map(v => v.amp_ratio_b).filter(x => x != null);
+    const lagA = movedA.map(v => v.lag_a_ms).filter(x => x != null), lagB = movedB.map(v => v.lag_b_ms).filter(x => x != null);
     const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
     cards.innerHTML += `<div class="card"><div class="k">A − ${["B", "C"][i]} (${p.b.label} · ${p.b.robot})</div><div class="v">${f(p.rmse_ab_all)} rad</div><div class="k">RMSE, 관절 ${p.joints.length}개</div></div>
-      <div class="card"><div class="k">진폭비 A / ${["B", "C"][i]}</div><div class="v">${f(mean(drivenA), 2)} / ${f(mean(drivenB), 2)}</div><div class="k">움직인 폭 ÷ 명령 폭</div></div>
+      <div class="card"><div class="k">진폭비 A / ${["B", "C"][i]}</div><div class="v">${f(mean(drivenA), 2)} / ${f(mean(drivenB), 2)}</div><div class="k">움직인 폭 ÷ 명령 폭 (구동 관절 ${drivenA.length}/${drivenB.length}개 평균)</div></div>
       <div class="card"><div class="k">지연 A / ${["B", "C"][i]}</div><div class="v">${f(mean(lagA), 0)} / ${f(mean(lagB), 0)} ms</div><div class="k">명령 대비</div></div>`;
   }
   // 차트

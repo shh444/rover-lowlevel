@@ -207,7 +207,6 @@ class Jobs:
 
 
 def make_handler(root: Path, jobs: Jobs, cfg: dict):
-    ui_html = UI_PATH.read_text(encoding="utf-8")
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -244,7 +243,7 @@ def make_handler(root: Path, jobs: Jobs, cfg: dict):
             max_pts = int(qs.get("max", ["2500"])[0])
             try:
                 if not parts:
-                    return self._send(200, ui_html.encode("utf-8"), "text/html; charset=utf-8")
+                    return self._send(200, UI_PATH.read_bytes(), "text/html; charset=utf-8")  # 매 요청마다 읽어 UI 수정이 재시작 없이 반영
                 if parts[:2] == ["api", "runs"]:
                     runs = list_runs(root)
                     return self._json({"runs": runs,
