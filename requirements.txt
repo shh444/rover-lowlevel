@@ -1,0 +1,8 @@
+# 공통
+numpy>=1.26
+# MuJoCo 백엔드·가상 로봇 (실기만 쓰면 불필요)
+mujoco>=3.1
+# --snapshot 이미지 저장 (선택)
+Pillow>=10
+# 실기 DDS: SDK dist/ 의 dds_middleware_python-*.whl (CPython 3.10 전용) + dds-middleware-with-thirdparty deb
+#           → docker/Dockerfile 참고. pip 로는 설치되지 않는다.

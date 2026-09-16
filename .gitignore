@@ -1,0 +1,18 @@
+# 실행 기록·빌드 산출물·가상환경
+__pycache__/
+*.pyc
+runs/
+build/
+.venv*/
+*.tmp
+
+# SDK 배포물 (dobot_quad_sdk/dist 에서 복사해 넣는다. 저장소에는 포함하지 않음)
+docker/sdk/*.deb
+docker/sdk/*.whl
+docker/build.log
+docker/build.done
+docker/cyclonedds.generated.xml
+
+# 외부 저장소 사본 (dobot_rover_simulation, dobot_quad_sdk)
+vendor/
+vendor_sdk/

@@ -1,0 +1,129 @@
+{
+  "checked_at_utc": "2026-09-16T10:58:52.175528+00:00",
+  "robot_ip": "192.168.5.2",
+  "results": {
+    "유선 인터페이스": {
+      "status": "PASS",
+      "detail": "enP2p1s0 192.168.5.154/24"
+    },
+    "ping 192.168.5.2": {
+      "status": "PASS",
+      "detail": ""
+    },
+    "주 제어기 gRPC 50051": {
+      "status": "INFO",
+      "detail": "닫힘 (kill_robot 실행됨 또는 로봇 미연결)"
+    },
+    "CYCLONEDDS_URI": {
+      "status": "PASS",
+      "detail": "/work/docker/cyclonedds.generated.xml (인터페이스 enP2p1s0)"
+    },
+    "cyclonedds.xml 인터페이스 = 유선 인터페이스": {
+      "status": "PASS",
+      "detail": "enP2p1s0 vs enP2p1s0"
+    },
+    "SDK import": {
+      "status": "PASS",
+      "detail": "/usr/local/lib/python3.10/dist-packages/dds_middleware_python/__init__.py"
+    },
+    "rt/lower/state 수신률": {
+      "status": "PASS",
+      "detail": "993 Hz (2980개/3s), 폴링 기준 간격 max 7.2 ms, 100 ms 초과 0회, 파싱 오류 0"
+    },
+    "모터 mode(16 슬롯)": {
+      "status": "INFO",
+      "detail": "2=offline 4=controlled  raw=[4, 4, 4, 2, 4, 4, 4, 2, 4, 4, 4, 2, 4, 4, 4, 2]"
+    },
+    "모터 온도": {
+      "status": "PASS",
+      "detail": "max 31 °C  raw=[29, 29, 29, 0, 28, 28, 27, 0, 30, 29, 29, 0, 31, 30, 29, 0]"
+    },
+    "IMU 중력 방향": {
+      "status": "PASS",
+      "detail": "gravity_z=-1.000 (평평하면 -1), |quat|=1.000"
+    },
+    "관절각 범위(URDF ±0.3)": {
+      "status": "PASS",
+      "detail": "모두 범위 안"
+    }
+  },
+  "main_controller_grpc_open": false,
+  "state_rx": {
+    "count": 2980,
+    "rate_hz": 993.3333333333334,
+    "gap_max_ms": 7.245221997436602
+  },
+  "state_sample": {
+    "q_logical": [
+      -0.4074,
+      -0.0847,
+      -0.6866,
+      0.5759,
+      -0.0801,
+      -0.9745,
+      -0.5342,
+      0.3561,
+      -1.2738,
+      0.4482,
+      0.3468,
+      -0.8662
+    ],
+    "dq": [
+      -0.0586,
+      -0.0586,
+      0.0195,
+      0.0977,
+      -0.0977,
+      0.0195,
+      -0.0195,
+      -0.0586,
+      0.1368,
+      -0.0195,
+      0.0195,
+      -0.0977
+    ],
+    "mode_hw": [
+      4,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      2
+    ],
+    "temp_hw": [
+      29,
+      29,
+      29,
+      0,
+      28,
+      28,
+      27,
+      0,
+      30,
+      29,
+      29,
+      0,
+      31,
+      30,
+      29,
+      0
+    ],
+    "quat_wxyz": [
+      0.99994,
+      -0.0055,
+      0.00824,
+      0.00338
+    ],
+    "gravity_z": -0.9998037158439288
+  }
+}

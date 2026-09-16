@@ -1,0 +1,129 @@
+{
+  "checked_at_utc": "2026-09-16T06:38:30.254340+00:00",
+  "robot_ip": "127.0.0.1",
+  "results": {
+    "유선 인터페이스": {
+      "status": "PASS",
+      "detail": "lo 127.0.0.1/8"
+    },
+    "ping 127.0.0.1": {
+      "status": "PASS",
+      "detail": ""
+    },
+    "주 제어기 gRPC 50051": {
+      "status": "INFO",
+      "detail": "닫힘 (kill_robot 실행됨 또는 로봇 미연결)"
+    },
+    "CYCLONEDDS_URI": {
+      "status": "PASS",
+      "detail": "/home/thor/rover-lowlevel/docker/cyclonedds.generated.xml (인터페이스 lo)"
+    },
+    "cyclonedds.xml 인터페이스 = 유선 인터페이스": {
+      "status": "PASS",
+      "detail": "lo vs lo"
+    },
+    "SDK import": {
+      "status": "PASS",
+      "detail": "/home/thor/rover-lowlevel/tests/fake_dds/dds_middleware_python.py"
+    },
+    "rt/lower/state 수신률": {
+      "status": "PASS",
+      "detail": "500 Hz (999개/2s), 폴링 기준 간격 max 2.9 ms, 100 ms 초과 0회, 파싱 오류 0"
+    },
+    "모터 mode(16 슬롯)": {
+      "status": "INFO",
+      "detail": "0=disabled 3=enabled  raw=[3, 3, 3, 0, 3, 3, 3, 0, 3, 3, 3, 0, 3, 3, 3, 0]"
+    },
+    "모터 온도": {
+      "status": "PASS",
+      "detail": "max 35 °C  raw=[35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35]"
+    },
+    "IMU 중력 방향": {
+      "status": "PASS",
+      "detail": "gravity_z=-0.987 (평평하면 -1), |quat|=1.000"
+    },
+    "관절각 범위(URDF ±0.3)": {
+      "status": "PASS",
+      "detail": "모두 범위 안"
+    }
+  },
+  "main_controller_grpc_open": false,
+  "state_rx": {
+    "count": 999,
+    "rate_hz": 499.5,
+    "gap_max_ms": 2.858892999938689
+  },
+  "state_sample": {
+    "q_logical": [
+      0.0453,
+      1.5175,
+      -2.575,
+      0.247,
+      1.1848,
+      -2.5947,
+      0.6647,
+      1.1814,
+      -2.5478,
+      -0.6652,
+      1.4035,
+      -2.5537
+    ],
+    "dq": [
+      0.0264,
+      -0.0503,
+      -0.0039,
+      -0.0714,
+      -0.0182,
+      0.0031,
+      0.0004,
+      -0.0053,
+      -0.0031,
+      -0.0004,
+      -0.0383,
+      0.0034
+    ],
+    "mode_hw": [
+      3,
+      3,
+      3,
+      0,
+      3,
+      3,
+      3,
+      0,
+      3,
+      3,
+      3,
+      0,
+      3,
+      3,
+      3,
+      0
+    ],
+    "temp_hw": [
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35,
+      35
+    ],
+    "quat_wxyz": [
+      0.99659,
+      -0.00717,
+      -0.08134,
+      0.01218
+    ],
+    "gravity_z": -0.9866639775038452
+  }
+}
