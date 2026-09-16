@@ -2,9 +2,9 @@
   "_comment": "datalab/server.py 실행 명령과 한계. commands 의 각 항목 뒤에 run.py 인자가 붙는다. 실기(dds)는 SDK 가 있는 환경(thor 컨테이너)에서만 동작한다.",
   "commands": {
     "dds": ["docker/sdk.sh", "bash", "-c", "source docker/dds_env.sh > /dev/null && exec python3 run.py \"$@\"", "_"],
-    "_isaac_example": ["C:/path/to/.venv-isaac/Scripts/python.exe", "run.py"]
+    "isaac": ["C:/isaac-venv/Scripts/python.exe", "run.py"]
   },
-  "_isaac_note": "Isaac Sim 을 쓰려면 위 _isaac_example 을 isaac 으로 바꾸고 Isaac Sim 이 설치된 환경의 python 경로를 넣는다 (예: .venv-isaac/Scripts/python.exe)",
+  "_isaac_note": "isaac 은 Isaac Sim 6.1 이 설치된 python 경로 (Windows 는 짧은 경로의 venv, 예: C:/isaac-venv). 첫 실행 전 NVIDIA EULA 동의가 필요하다 (docs/isaac.md). 없는 환경이면 이 항목을 지우면 수집 탭에서 사라진다.",
   "mjcf_models": {
     "atom_upper": "../thor-backup-20260916/extracted/atom-max-lab/atom_upper.xml",
     "rover_mjcf": "vendor/dobot_rover_simulation/dobot_sim2real/resources/mujoco/dobot_quad.xml"

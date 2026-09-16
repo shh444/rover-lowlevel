@@ -34,7 +34,7 @@ from lowlevel.safety import Guard, SafetyAbort                                  
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--backend", choices=("mujoco", "dds", "isaac"), required=True,
-                   help="mujoco=MuJoCo 시뮬, dds=실기, isaac=Isaac Sim (실험적, Python 3.11 + Isaac Sim 5.x)")
+                   help="mujoco=MuJoCo 시뮬, dds=실기, isaac=Isaac Sim 6.1 (Isaac Sim 이 설치된 python 으로 실행, docs/isaac.md)")
     p.add_argument("--program", choices=("standup", "sine", "hold", "damp"), required=True)
     p.add_argument("--duration", type=float, default=5.0,
                    help="본동작 시간(s). standup 은 선 뒤 유지하는 시간, sine/hold/damp 는 동작 시간")
@@ -60,6 +60,8 @@ def parse_args(argv=None):
     m = p.add_argument_group("mujoco")
     m.add_argument("--xml", type=Path, default=None, help="dobot_quad.xml 경로")
     m.add_argument("--urdf", type=Path, default=None, help="(isaac) dobot_quad_ros.urdf 경로")
+    m.add_argument("--isaac-engine", choices=("physx", "newton"), default="physx", help="(isaac) 물리 엔진 (기본 physx)")
+    m.add_argument("--isaac-device", default="cpu", help="(isaac) 물리 장치: cpu 또는 cuda:0 (기본 cpu)")
     m.add_argument("--fixed-base", action="store_true", help="(mujoco/isaac) 몸통을 공중에 고정 (지지된 로봇 시험)")
     m.add_argument("--start", choices=("lying", "standing"), default="lying")
     m.add_argument("--physics-dt", type=float, default=0.001)
@@ -87,7 +89,8 @@ def make_backend(args, out: Path):
     if args.backend == "isaac":
         from lowlevel.backend_isaac import IsaacBackend
         return IsaacBackend(urdf_path=args.urdf, dt=args.dt, physics_dt=args.physics_dt, start=args.start,
-                            fixed_base=args.fixed_base, headless=not args.viewer)
+                            fixed_base=args.fixed_base, headless=not args.viewer, engine=args.isaac_engine,
+                            device=args.isaac_device)
     from lowlevel.backend_dds import DdsBackend
     return DdsBackend(args.dds_config, timeout=args.state_wait)
 
