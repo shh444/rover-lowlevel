@@ -26,7 +26,8 @@ python examples/e4_sine_joint.py --backend mujoco      # 로봇 없이 바로
 ```
 rover_lowlevel/
 ├── run.py                   실행기(CLI). 프로그램 선택, 기록, 요약 JSON
-├── examples/                e1~e6 짧은 예제 (아래 "예제" 절)
+├── examples/                e1~e10 짧은 예제 (아래 "예제" 절)
+├── docs/USAGE.md            라이브러리로 쓰는 법 (API 튜토리얼)
 ├── dds_config.yaml          SDK 의 DDS QoS 설정 사본
 ├── lowlevel/
 │   ├── common.py            관절 순서·매핑·한계·State/JointCmd
@@ -158,6 +159,12 @@ with Session(io, dt=0.005, realtime=True, exit_mode="damp") as s:   # 블록을 
 | `e4_sine_joint.py` | E9 식 사인 (기본 thigh ±0.1 rad, 0.9 Hz) | ✅ 2026-09-16 (thigh ±0.1) |
 | `e5_standup.py` | sim2real 3단계 기립 → 유지 → 엎드림 | 시뮬만 |
 | `e6_raw_sdk_sine.py` | 패키지 없이 SDK API 만으로 쓴 E9 개선판 (실기 전용, 학습용) | 문법·import 만 확인 |
+| `e7_custom_program.py` | 나만의 Program 클래스 작성법 (앞발 들기) | 시뮬·가짜 DDS |
+| `e8_squat.py` | 서 있는 자세에서 자세 보간 (스쿼트) | 시뮬만 |
+| `e9_gravity_feedforward.py` | `tau` 피드포워드(중력 보상)와 몸통 고정 시험 모드 | 시뮬만 |
+| `e10_plot_trace.py` | trace.csv 그래프 (matplotlib) | 실기 기록으로 확인 |
+
+패키지를 라이브러리처럼 쓰는 방법(백엔드·명령·가드·Program 작성·실기 절차·기록 분석)은 [docs/USAGE.md](docs/USAGE.md) 에 정리했다.
 
 ## 흔히 막히는 지점 (다른 환경에서 저수준 제어가 안 될 때)
 

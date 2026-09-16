@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 import os
+import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 os.environ.setdefault("MUJOCO_GL", "egl")   # SSH/헤드리스 렌더링. import 전에 설정해야 한다.
@@ -18,17 +20,43 @@ from .common import (JOINT_NAMES, NUM_JOINTS, Q_CROUCH, Q_DEFAULT, Q_LOWER, Q_UP
                      JointCmd, State, find_default_xml)
 
 
+def make_fixed_base_xml(xml: Path, height: float = 0.85) -> Path:
+    """몸통(link_trunk)의 free joint 를 없애고 공중에 고정한 MJCF 를 임시 폴더에 만든다.
+    '로봇을 지지한 상태에서 다리만 시험' 하는 상황의 시뮬 대응 (control_lab 의 fixed_model 과 같은 방식)."""
+    tree = ET.parse(xml)
+    root = tree.getroot()
+    for inc in root.iter("include"):
+        inc.set("file", str((xml.parent / inc.get("file")).resolve()))
+    compiler = root.find("compiler")
+    if compiler is not None and compiler.get("meshdir"):
+        compiler.set("meshdir", str((xml.parent / compiler.get("meshdir")).resolve()))
+    trunk = root.find("worldbody/body[@name='link_trunk']")
+    free = trunk.find("joint[@type='free']") if trunk is not None else None
+    if trunk is None or free is None:
+        raise RuntimeError("link_trunk 의 free joint 를 찾지 못했습니다")
+    trunk.remove(free)
+    trunk.set("pos", f"0 0 {height}")
+    for key in list(root.findall("keyframe")):
+        root.remove(key)
+    out = Path(tempfile.mkdtemp(prefix="rover_fixed_")) / "fixed_body_model.xml"
+    tree.write(out, encoding="unicode")
+    return out
+
+
 class MujocoBackend:
     name = "mujoco"
 
     def __init__(self, xml_path=None, dt: float = 0.005, physics_dt: float = 0.001,
                  start: str = "lying", seed: int = 0, frames_dir=None, render_every: int = 0,
-                 size=(960, 540)):
+                 size=(960, 540), fixed_base: bool = False):
         xml = Path(xml_path) if xml_path else find_default_xml()
         if xml is None or not xml.exists():
             raise FileNotFoundError(f"MJCF 없음: {xml} (--xml 또는 ROVER_VENDOR 로 지정. "
                                     "dobot_rover_simulation 저장소의 dobot_sim2real/resources/mujoco/dobot_quad.xml)")
+        if fixed_base:
+            xml = make_fixed_base_xml(xml)
         self.xml = xml
+        self.fixed_base = bool(fixed_base)
         self.m = mujoco.MjModel.from_xml_path(str(xml))
         self.substeps = max(1, int(round(dt / physics_dt)))
         if not math.isclose(self.substeps * physics_dt, dt, rel_tol=1e-6):
@@ -53,18 +81,23 @@ class MujocoBackend:
         for s in ("orientation", "angular-velocity", "linear-acceleration"):
             self.d.sensor(s)   # 없으면 KeyError
 
+        self.has_free = bool(np.any(self.m.jnt_type == mujoco.mjtJoint.mjJNT_FREE))
+        self.trunk_id = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, "link_trunk")
         rng = np.random.default_rng(seed)
-        if start == "standing":
-            self.d.qpos[:3] = [0.0, 0.0, 0.37]
+        if start == "standing" or not self.has_free:   # 몸통 고정이면 다리를 늘어뜨린 기본 자세에서 시작
             q0 = Q_DEFAULT.copy()
+            if self.has_free:
+                self.d.qpos[:3] = [0.0, 0.0, 0.37]
         else:   # lying: sim2real init_mujoco 와 같이 엎드림 자세 + 잡음, 공중에서 낙하
             self.d.qpos[:3] = [0.0, 0.0, 0.32]
             q0 = np.clip(Q_CROUCH, Q_LOWER, Q_UPPER) + rng.uniform(-0.3, 0.3, NUM_JOINTS)
             q0 = np.clip(q0, Q_LOWER, Q_UPPER)
-        self.d.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
+        if self.has_free:
+            self.d.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]
         self.d.qpos[self.qa] = q0
         self.d.qvel[:] = 0.0
         mujoco.mj_forward(self.m, self.d)
+        self._scratch = mujoco.MjData(self.m)          # nominal_gravity 용 (물리 상태를 건드리지 않는다)
 
         self.tick = 0
         self.last_tau = np.zeros(NUM_JOINTS)
@@ -80,6 +113,9 @@ class MujocoBackend:
     def wait_ready(self) -> State:
         return self.read()
 
+    def base_pos(self) -> np.ndarray:
+        return self.d.qpos[:3].copy() if self.has_free else self.d.xpos[self.trunk_id].copy()
+
     def read(self) -> State:
         d = self.d
         return State(t=float(d.time), q=d.qpos[self.qa].copy(), dq=d.qvel[self.va].copy(),
@@ -87,7 +123,20 @@ class MujocoBackend:
                      gyro=d.sensor("angular-velocity").data.copy(),
                      acc=d.sensor("linear-acceleration").data.copy(),
                      tau_est=self.last_tau.copy(), age=0.0,
-                     extra={"base_pos": d.qpos[:3].copy(), "sim_time": float(d.time)})
+                     extra={"base_pos": self.base_pos(), "sim_time": float(d.time)})
+
+    def nominal_gravity(self, q: np.ndarray, quat_wxyz=None) -> np.ndarray:
+        """명목 모델의 중력 토크 g(q) (12,). 속도 0 이므로 코리올리 항은 없다. tau_ff 로 쓰면 중력을 상쇄한다.
+        몸통이 자유로우면 quat_wxyz(IMU)로 몸통 기울기를 반영한다. 접촉력은 포함하지 않는다(공중 지지 상황용)."""
+        s = self._scratch
+        s.qpos[:] = self.d.qpos
+        if self.has_free and quat_wxyz is not None:
+            s.qpos[3:7] = quat_wxyz
+        s.qpos[self.qa] = q
+        s.qvel[:] = 0.0
+        s.qacc[:] = 0.0
+        mujoco.mj_forward(self.m, s)
+        return s.qfrc_bias[self.va].copy()
 
     def send(self, cmd: JointCmd) -> None:
         d = self.d
@@ -111,7 +160,7 @@ class MujocoBackend:
                 self._cam = mujoco.MjvCamera()
                 self._cam.type = mujoco.mjtCamera.mjCAMERA_FREE
                 self._cam.distance, self._cam.azimuth, self._cam.elevation = 1.8, 135, -20
-            self._cam.lookat[:] = self.d.qpos[:3] + np.array([0.0, 0.0, -0.05])
+            self._cam.lookat[:] = self.base_pos() + np.array([0.0, 0.0, -0.05])
             self._renderer.update_scene(self.d, camera=self._cam)
             pixels = self._renderer.render()
             from PIL import Image
