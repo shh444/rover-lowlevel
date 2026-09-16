@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-"""데이터 플랫폼 서버: 시뮬·실기 실행을 시작/정지하고, 기록을 나열·열람·비교하는 웹 대시보드 (표준 라이브러리만).
+"""데이터 플랫폼 서버: 시뮬·실기·Isaac·다른 로봇(MJCF) 실행을 시작/정지하고, 기록을 나열·열람·비교하는 웹 대시보드.
+표준 라이브러리만 쓴다.
 
     python datalab/server.py --root runs --port 8095          # 브라우저: http://127.0.0.1:8095/
     thor 에서 실행하고 PC 에서 보려면:  ssh -L 8768:127.0.0.1:8095 thor  →  http://127.0.0.1:8768/
 
 API
-  GET  /api/runs                                  기록 목록 (meta.json 기준, 최신순)
-  GET  /api/run/<id>                              meta + summary
-  GET  /api/run/<id>/series?joints=1,4&max=2500   차트용 시계열 (실행 중이면 지금까지)
-  GET  /api/compare?a=<id>&b=<id>&joints=1,4      비교 지표(RMSE·상관·진폭비·지연·토크) + 두 기록의 시계열
-  POST /api/start   {backend, program, duration, amp, freq, joints, kp, kd, start, tags, note, confirm}
-                    실행 시작. 실기(dds)는 confirm 이 "REAL" 이어야 하고, run.py 의 주 제어기 검사도 그대로 적용된다
-  POST /api/stop    {job}                          안전 종료 (SIGINT → 엎드림/댐핑 후 기록 마감)
-  GET  /api/jobs                                   실행 중/최근 작업과 로그 꼬리
-  POST /api/run/<id>/meta {tags, note}             태그·메모 수정
-실행 명령은 datalab/config.json 으로 바꿀 수 있다 (기본: 시뮬은 이 파이썬으로 run.py, 실기는 docker/sdk.sh 안에서 run.py).
+  GET  /api/runs                                   기록 목록(meta.json) + robots/labels/programs 목록
+  GET  /api/run/<id>                               meta + summary
+  GET  /api/run/<id>/series?joints=a,b&max=2500&rel=0   차트용 시계열 (실행 중이면 지금까지)
+  GET  /api/compare?runs=A,B[,C]&joints=&rel=0     기준 A 와 나머지의 쌍별 비교 지표 + 모든 기록의 시계열
+  POST /api/start   {backend, program, duration, amp, freq, joints, kp, kd, start, viewer, fixed_base, robot, xml, tags, note, confirm}
+                    backend: mujoco | dds(confirm="REAL") | isaac | mjcf(임의 MJCF, xml·robot 필요)
+  POST /api/stop    {job}                           안전 종료 (SIGINT → 엎드림/댐핑 후 기록 마감)
+  GET  /api/jobs                                    실행 중/최근 작업과 로그 꼬리, 백엔드·프로그램·한계
+  POST /api/run/<id>/meta {tags, note, robot}       메타 수정
+실행 명령은 datalab/config.json 으로 바꿀 수 있다 (기본: 시뮬·mjcf 는 서버의 파이썬, 실기는 docker/sdk.sh 컨테이너).
 """
 from __future__ import annotations
 
@@ -33,21 +34,23 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from lowlevel.common import JOINT_SHORT                                   # noqa: E402
-from lowlevel.dataset import (compare_runs, compare_series, driven_joints, list_runs,   # noqa: E402
-                              load_run, read_meta, series, update_meta)
+from lowlevel.dataset import (compare_many, list_runs, load_run, read_meta, series,   # noqa: E402
+                              update_meta)
 
 HERE = Path(__file__).resolve().parent
 UI_PATH = HERE / "ui.html"
 DEFAULT_CONFIG = {
     "commands": {
         "mujoco": [sys.executable, "run.py"],
+        "mjcf": [sys.executable, "tools/mujoco_record.py"],
         "dds": ["docker/sdk.sh", "bash", "-c", "source docker/dds_env.sh > /dev/null && exec python3 run.py \"$@\"", "_"],
     },
     "real_confirm": "REAL",
-    "limits": {"amp_max": 0.3, "kp_max": 100.0, "kd_max": 5.0, "duration_max": 600.0},
+    "limits": {"amp_max": 0.5, "kp_max": 100.0, "kd_max": 5.0, "duration_max": 600.0},
     "programs": ["damp", "hold", "sine", "standup"],
-    "sim_realtime": True,      # 플랫폼에서 시작한 시뮬은 벽시계 페이싱 (라이브 차트·정지가 실기와 같은 흐름)
+    "mjcf_programs": ["hold", "sine", "damp"],
+    "sim_realtime": True,
+    "mjcf_models": {},                       # 이름 → xml 경로 (수집 탭의 MJCF 목록)
 }
 
 
@@ -61,60 +64,87 @@ def load_config(path: Path | None) -> dict:
                 cfg[k].update(v)
             else:
                 cfg[k] = v
-    # "_" 로 시작하는 항목은 주석·예시 (예: _isaac_example) 이므로 백엔드로 취급하지 않는다
     cfg["commands"] = {k: v for k, v in cfg["commands"].items() if not k.startswith("_")}
+    cfg["mjcf_models"] = {k: v for k, v in cfg.get("mjcf_models", {}).items() if not k.startswith("_")}
     return cfg
 
 
 class Jobs:
-    """run.py 서브프로세스 관리. 정지는 SIGINT(Windows: CTRL_BREAK) 로 보내 run.py 가 안전 종료하게 한다."""
+    """run.py / mujoco_record.py 서브프로세스 관리. 정지는 SIGINT(Windows: CTRL_BREAK) 로 보내 안전 종료하게 한다."""
 
     def __init__(self, root: Path, cfg: dict):
         self.root, self.cfg = root, cfg
         self.lock = threading.Lock()
         self.jobs: dict[str, dict] = {}
 
+    def _num(self, req, key, default, lo, hi):
+        v = float(req.get(key, default))
+        if not (lo <= v <= hi):
+            raise ValueError(f"{key} 는 {lo}~{hi} 범위여야 합니다")
+        return v
+
     def start(self, req: dict) -> dict:
         backend = req.get("backend")
         if backend not in self.cfg["commands"]:
             raise ValueError(f"backend 는 {list(self.cfg['commands'])} 중 하나")
+        lim = self.cfg["limits"]
         program = req.get("program", "sine")
-        if program not in self.cfg["programs"]:
-            raise ValueError(f"program 은 {self.cfg['programs']} 중 하나")
+        allowed = self.cfg["mjcf_programs"] if backend == "mjcf" else self.cfg["programs"]
+        if program not in allowed:
+            raise ValueError(f"program 은 {allowed} 중 하나")
         if backend == "dds" and req.get("confirm") != self.cfg["real_confirm"]:
             raise ValueError(f"실기 실행은 confirm='{self.cfg['real_confirm']}' 가 필요합니다 (kill_robot·지지 상태·주변 확인 후)")
-        lim = self.cfg["limits"]
-        duration = float(req.get("duration", 5.0))
-        amp, freq = float(req.get("amp", 0.1)), float(req.get("freq", 0.9))
-        kp, kd = float(req.get("kp", 30.0)), float(req.get("kd", 1.2))
-        if not (0 < duration <= lim["duration_max"]):
-            raise ValueError("duration 범위 밖")
-        if not (0 <= amp <= lim["amp_max"]) or not (0 <= kp <= lim["kp_max"]) or not (0 <= kd <= lim["kd_max"]):
-            raise ValueError(f"amp≤{lim['amp_max']}, kp≤{lim['kp_max']}, kd≤{lim['kd_max']} 이어야 합니다")
-        joints = str(req.get("joints", "thigh")).replace(" ", "") or "thigh"
+        duration = self._num(req, "duration", 5.0, 0.1, lim["duration_max"])
+        amp = self._num(req, "amp", 0.1, 0.0, lim["amp_max"])
+        freq = self._num(req, "freq", 0.9, 0.0, 10.0)
+        kp = self._num(req, "kp", 30.0, 0.0, lim["kp_max"])
+        kd = self._num(req, "kd", 1.2, 0.0, lim["kd_max"])
+        joints = str(req.get("joints", "thigh")).replace(" ", "") or "all"
+        robot = str(req.get("robot") or ("rover" if backend != "mjcf" else "")).strip()
+        tags = [str(t) for t in (req.get("tags") or []) if t] + ["datalab"]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        label = {"dds": "real", "mujoco": "sim", "isaac": "isaac"}.get(backend, backend)
-        run_id = f"{stamp}-{label}-{program}"
-        out = self.root / run_id
-        out.mkdir(parents=True, exist_ok=True)
-        args = ["--backend", backend, "--program", program, "--duration", str(duration), "--out", str(out),
-                "--amp", str(amp), "--freq", str(freq), "--joints", joints, "--kp", str(kp), "--kd", str(kd)]
-        if backend in ("mujoco", "isaac") and req.get("start") in ("lying", "standing"):
-            args += ["--start", req["start"]]
-        if backend in ("mujoco", "isaac") and self.cfg.get("sim_realtime", True):
-            args += ["--realtime"]
-        if backend in ("mujoco", "isaac") and req.get("viewer"):
-            args += ["--viewer"]                    # 서버가 도는 PC 에 뷰어 창이 뜬다 (노트북에서 쓸 때)
-        if backend in ("mujoco", "isaac") and req.get("fixed_base"):
-            args += ["--fixed-base"]
-        if backend == "dds":
-            args += ["--yes"]
-        for tag in req.get("tags", []) or []:
-            if tag:
-                args += ["--tag", str(tag)]
-        args += ["--tag", "datalab"]
+        label = {"dds": "real", "mujoco": "sim", "isaac": "isaac", "mjcf": "sim"}.get(backend, backend)
+
+        if backend == "mjcf":
+            xml = req.get("xml") or self.cfg["mjcf_models"].get(robot)
+            if not xml:
+                raise ValueError("mjcf 는 xml 경로(또는 config 의 mjcf_models 이름)가 필요합니다")
+            xml_path = Path(xml)
+            if not xml_path.is_absolute():
+                xml_path = ROOT / xml_path
+            if not xml_path.exists():
+                raise FileNotFoundError(f"xml 없음: {xml_path}")
+            robot = robot or xml_path.stem
+            run_id = f"{stamp}-sim-{program}-{robot}"
+            out = self.root / run_id
+            args = ["--xml", str(xml_path), "--robot", robot, "--program", program, "--seconds", str(duration),
+                    "--amp", str(amp), "--freq", str(freq), "--joints", joints, "--kp", str(kp), "--kd", str(kd),
+                    "--out", str(out)]
+            if self.cfg.get("sim_realtime", True):
+                args += ["--realtime"]
+            if req.get("viewer"):
+                args += ["--viewer"]
+        else:
+            run_id = f"{stamp}-{label}-{program}" + (f"-{robot}" if robot and robot != "rover" else "")
+            out = self.root / run_id
+            args = ["--backend", backend, "--program", program, "--duration", str(duration), "--out", str(out),
+                    "--amp", str(amp), "--freq", str(freq), "--joints", joints, "--kp", str(kp), "--kd", str(kd),
+                    "--robot", robot or "rover"]
+            if backend in ("mujoco", "isaac") and req.get("start") in ("lying", "standing"):
+                args += ["--start", req["start"]]
+            if backend in ("mujoco", "isaac") and self.cfg.get("sim_realtime", True):
+                args += ["--realtime"]
+            if backend in ("mujoco", "isaac") and req.get("viewer"):
+                args += ["--viewer"]
+            if backend in ("mujoco", "isaac") and req.get("fixed_base"):
+                args += ["--fixed-base"]
+            if backend == "dds":
+                args += ["--yes"]
+        for tag in tags:
+            args += ["--tag", tag]
         if req.get("note"):
             args += ["--note", str(req["note"])]
+        out.mkdir(parents=True, exist_ok=True)
         cmd = list(self.cfg["commands"][backend]) + args
         log_path = out / "job.log"
         log = open(log_path, "w", encoding="utf-8")
@@ -124,8 +154,8 @@ class Jobs:
         else:
             kwargs["start_new_session"] = True
         proc = subprocess.Popen(cmd, **kwargs)
-        job = {"id": run_id, "run_id": run_id, "backend": backend, "label": label, "program": program, "pid": proc.pid,
-               "cmd": cmd, "started_at": time.time(), "log_path": str(log_path), "returncode": None,
+        job = {"id": run_id, "run_id": run_id, "backend": backend, "label": label, "program": program, "robot": robot or "rover",
+               "pid": proc.pid, "cmd": cmd, "started_at": time.time(), "log_path": str(log_path), "returncode": None,
                "_proc": proc, "_log": log}
         with self.lock:
             self.jobs[run_id] = job
@@ -197,22 +227,8 @@ def make_handler(root: Path, jobs: Jobs, cfg: dict):
         def _error(self, exc, code: int = 400):
             self._json({"error": str(exc)}, code)
 
-        @staticmethod
-        def _joints(qs, default=None):
-            raw = qs.get("joints", [""])[0]
-            if raw.strip() == "":
-                return default
-            joints = []
-            for tok in raw.split(","):
-                tok = tok.strip()
-                if tok.isdigit() and 0 <= int(tok) < 12:
-                    joints.append(int(tok))
-                elif tok in JOINT_SHORT:
-                    joints.append(JOINT_SHORT.index(tok))
-            return joints or default
-
         def _run_dir(self, run_id: str) -> Path:
-            if "/" in run_id or "\\" in run_id or run_id in ("", ".", ".."):
+            if not run_id or "/" in run_id or "\\" in run_id or run_id in (".", ".."):
                 raise ValueError("잘못된 id")
             d = root / run_id
             if not (d / "trace.csv").exists():
@@ -223,34 +239,36 @@ def make_handler(root: Path, jobs: Jobs, cfg: dict):
             u = urlparse(self.path)
             qs = parse_qs(u.query)
             parts = [p for p in u.path.split("/") if p]
+            joints_q = qs.get("joints", [""])[0] or None
+            rel = qs.get("rel", ["0"])[0] in ("1", "true", "yes")
+            max_pts = int(qs.get("max", ["2500"])[0])
             try:
                 if not parts:
                     return self._send(200, ui_html.encode("utf-8"), "text/html; charset=utf-8")
                 if parts[:2] == ["api", "runs"]:
-                    return self._json({"runs": list_runs(root), "joints": JOINT_SHORT})
+                    runs = list_runs(root)
+                    return self._json({"runs": runs,
+                                       "robots": sorted({r.get("robot", "?") for r in runs}),
+                                       "labels": sorted({r.get("label", "?") for r in runs}),
+                                       "programs": sorted({str(r.get("program", "?")) for r in runs})})
                 if parts[:2] == ["api", "jobs"]:
                     return self._json({"jobs": jobs.list(), "limits": cfg["limits"], "programs": cfg["programs"],
+                                       "mjcf_programs": cfg["mjcf_programs"], "mjcf_models": cfg["mjcf_models"],
                                        "backends": list(cfg["commands"]), "real_confirm": cfg["real_confirm"]})
                 if parts[:2] == ["api", "compare"]:
-                    a = load_run(self._run_dir(qs.get("a", [""])[0]))
-                    b = load_run(self._run_dir(qs.get("b", [""])[0]))
-                    rel = qs.get("rel", ["0"])[0] in ("1", "true", "yes")
-                    metrics = compare_runs(a, b, self._joints(qs), relative=rel)
-                    joints = [JOINT_SHORT.index(n) for n in metrics["joints"]]
-                    return self._json({"metrics": metrics,
-                                       "series": compare_series(a, b, joints, int(qs.get("max", ["2500"])[0]), relative=rel)})
+                    ids = [s for s in qs.get("runs", [""])[0].split(",") if s] or [qs.get("a", [""])[0], qs.get("b", [""])[0]]
+                    runs = [load_run(self._run_dir(i)) for i in ids]
+                    return self._json(compare_many(runs, joints_q, rel, max_pts))
                 if parts[:2] == ["api", "run"] and len(parts) >= 3:
                     d = self._run_dir(parts[2])
                     if len(parts) == 3:
-                        meta = read_meta(d)
                         summary = None
                         if (d / "summary.json").exists():
                             summary = json.loads((d / "summary.json").read_text(encoding="utf-8"))
-                        return self._json({"meta": meta, "summary": summary})
+                        return self._json({"meta": read_meta(d), "summary": summary})
                     if parts[3] == "series":
                         run = load_run(d)
-                        joints = self._joints(qs, default=driven_joints(run)[:4] or [1, 4, 7, 10])
-                        out = series(run, joints, int(qs.get("max", ["2500"])[0]))
+                        out = series(run, joints_q, max_pts, rel)
                         out["meta"] = run.meta
                         out["rows"] = len(run.t)
                         return self._json(out)
@@ -272,7 +290,7 @@ def make_handler(root: Path, jobs: Jobs, cfg: dict):
                     return self._json(jobs.stop(str(body.get("job", ""))))
                 if parts[:2] == ["api", "run"] and len(parts) == 4 and parts[3] == "meta":
                     d = self._run_dir(parts[2])
-                    fields = {k: body[k] for k in ("tags", "note") if k in body}
+                    fields = {k: body[k] for k in ("tags", "note", "robot") if k in body}
                     return self._json(update_meta(d, **fields))
                 return self._error("없는 경로", 404)
             except Exception as exc:                                   # noqa: BLE001

@@ -23,7 +23,7 @@ import numpy as np
 
 from . import programs
 from .common import JOINT_SHORT, KD_DAMP, KD_STAND, JointCmd, cosine_interp
-from .dataset import TRACE_COLUMNS, update_meta, utc_now, write_meta
+from .dataset import trace_columns, update_meta, utc_now, write_meta
 from .safety import Guard, SafetyAbort
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,14 +103,16 @@ class Pacer:
 
 
 class TraceLog:
-    """틱마다 상태·명령을 CSV 로 남긴다 (열 정의: lowlevel.dataset.TRACE_COLUMNS). 0.1초마다 flush 해 실행 중에도 읽을 수 있다."""
+    """틱마다 상태·명령을 CSV 로 남긴다 (열 정의: lowlevel.dataset.trace_columns(joints)). 0.1초마다 flush 해 실행 중에도 읽을 수 있다.
+    joints 를 주면 다른 로봇(관절 수·이름이 다른)도 같은 형식으로 기록한다."""
 
-    def __init__(self, path, flush_every: int = 20):
+    def __init__(self, path, flush_every: int = 20, joints=None):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.path = Path(path)
+        self.joints = list(joints) if joints else list(JOINT_SHORT)
         self.f = open(path, "w", newline="", encoding="utf-8")
         self.w = csv.writer(self.f)
-        self.w.writerow(TRACE_COLUMNS)
+        self.w.writerow(trace_columns(self.joints))
         self.f.flush()
         self.rows = 0
         self.flush_every = max(1, int(flush_every))
@@ -234,8 +236,8 @@ class Session:
         self.io, self.dt, self.realtime = io, float(dt), bool(realtime)
         self.exit_mode, self.kd_damp = exit_mode, float(kd_damp)
         self.guard = guard or Guard(self.dt)
-        self.log = TraceLog(log_path) if log_path else None
         self.meta = dict(meta or {})
+        self.log = TraceLog(log_path, joints=self.meta.get("joints")) if log_path else None
         self.interrupts = Interrupts()
         self.pacer = Pacer(self.dt, self.realtime)
         self.tick = 0
@@ -249,7 +251,8 @@ class Session:
             m = self.meta
             write_meta(self.log.path.parent, source=getattr(self.io, "name", "?"), program=m.get("program", "custom"),
                        params=m.get("params"), dt=self.dt, tags=m.get("tags"), note=m.get("note", ""),
-                       extra={k: v for k, v in m.items() if k not in ("program", "params", "tags", "note")})
+                       robot=m.get("robot", "rover"), joints=self.log.joints,
+                       extra={k: v for k, v in m.items() if k not in ("program", "params", "tags", "note", "robot", "joints")})
         return self
 
     def run(self, seconds: float | None = None):

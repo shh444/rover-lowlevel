@@ -44,6 +44,7 @@ def parse_args(argv=None):
                    help="종료 방식. 기본: standup 은 crouch(엎드린 뒤 댐핑), 나머지는 damp")
     p.add_argument("--tag", action="append", default=[], help="기록 meta.json 의 태그 (여러 번 가능)")
     p.add_argument("--note", default="", help="기록 meta.json 의 메모")
+    p.add_argument("--robot", default="rover", help="기록 meta.json 의 로봇 이름 (플랫폼 필터용)")
     g = p.add_argument_group("안전 가드")
     g.add_argument("--slew", type=float, default=2.0, help="목표각 변화율 한계 rad/s")
     g.add_argument("--state-timeout", type=float, default=0.2, help="상태 수신 워치독 s (sim2real 0.2)")
@@ -113,6 +114,7 @@ def main(argv=None) -> int:
     out = args.out or (ROOT / "runs" / f"{stamp}-{args.backend}-{args.program}")
     out.mkdir(parents=True, exist_ok=True)
     write_meta(out, source=args.backend, program=args.program, dt=args.dt, tags=args.tag, note=args.note,
+               robot=args.robot,
                params={k: getattr(args, k) for k in ("duration", "amp", "freq", "joints", "kp", "kd", "start", "exit")})
     try:
         io = make_backend(args, out)

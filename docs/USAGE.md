@@ -170,8 +170,14 @@ python tools/live_compare.py --backend mujoco --program sine --seconds 10
 python datalab/server.py --root runs --port 8095      # http://127.0.0.1:8095/
 ```
 
-수집 탭에서 시뮬/실기 실행을 시작·정지하고(라이브 차트), 기록 탭에서 목록·태그를 관리하고, 비교 탭에서 A(시뮬) vs B(실기)를
-겹쳐 본다. 모든 기록은 `runs/<id>/meta.json` + `trace.csv` 형식이며 `lowlevel.dataset` 으로 스크립트에서도 읽을 수 있다.
+수집 탭에서 시뮬/실기/Isaac/임의 MJCF 로봇 실행을 시작·정지하고(라이브 차트), 기록 탭에서 로봇·출처별로 목록·태그를 관리하고,
+비교 탭에서 A vs B(, C)를 겹쳐 본다. 모든 기록은 `runs/<id>/meta.json` + `trace.csv` 형식이며 관절 수·이름에 무관하다
+(휴머노이드 등 다른 로봇도 같은 형식). `lowlevel.dataset` 으로 스크립트에서도 읽을 수 있다.
+
+```bash
+python tools/mujoco_record.py --xml path/to/humanoid.xml --robot atom_upper --program sine --joints left_shoulder_pitch --amp 0.3
+python tools/import_run.py external.csv --robot humanoid --source dds --program walk --q-prefix q_
+```
 
 ```python
 from lowlevel.dataset import load_run, compare_runs

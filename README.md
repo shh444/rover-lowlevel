@@ -50,6 +50,9 @@ rover_lowlevel/
 │   ├── preflight_real.py    실기 연결 전 읽기 전용 점검 (네트워크·DDS 설정·상태 수신·mode·IMU)
 │   ├── compare_sim_real.py  실기 기록의 명령을 MuJoCo 에 재생해 관절각·토크·지연·진폭 비교 (오프라인)
 │   ├── live_compare.py/.html  실기와 MuJoCo 쌍둥이를 같은 명령으로 동시에 움직이며 브라우저 실시간 차트 비교
+│   ├── mujoco_record.py     임의 MJCF 로봇(휴머노이드 등)을 같은 기록 형식으로 수집하는 범용 기록기
+│   ├── import_run.py        외부 CSV 기록을 플랫폼 형식으로 가져오기
+│   └── isaac_smoke.py       Isaac Sim 백엔드 연기 시험
 │   └── virtual_robot_dds/   C++ 가상 로봇: 실제 SDK 로 rt/lower/state 발행·rt/lower/cmd 구독 (컨테이너에서 build.sh)
 ├── docker/
 │   ├── Dockerfile           Ubuntu 22.04 + Python 3.10 + SDK 0.23.3 (thor 에서 DDS 를 쓰기 위한 컨테이너)
@@ -159,9 +162,10 @@ python3 run.py --backend dds --program damp --duration 3     # 이후 hold → s
 python datalab/server.py --root runs --port 8095        # http://127.0.0.1:8095/  (thor 면 ssh -L 8768:127.0.0.1:8095 thor)
 ```
 
-- **수집** 탭: 대상(시뮬/실기)·프로그램·파라미터·태그를 정해 시작, 라이브 차트, 정지(SIGINT → 안전 종료). 실기는 `REAL` 확인 + 주 제어기 검사.
-- **기록** 탭: 모든 실행의 목록·차트·태그, 비교 대상 A/B 지정.
-- **비교** 탭: A(시뮬) vs B(실기)를 겹쳐 그리고 관절별 RMSE·상관·추종 오차·진폭비·지연·토크 피크, 단계별 RMSE. 시작 자세가 달라도 "시작 자세 기준(상대)" 로 비교.
+- **수집** 탭: 대상(MuJoCo / 실기 / Isaac Sim / 임의 MJCF 로봇)·프로그램·파라미터·로봇 이름·태그를 정해 시작, 라이브 차트, 정지(SIGINT → 안전 종료). 실기는 `REAL` 확인 + 주 제어기 검사.
+- **기록** 탭: 로봇·출처·검색 필터, 목록·차트·태그·로봇 이름 수정, 비교 대상 A/B/C 지정.
+- **비교** 탭: A 와 B(, C)를 겹쳐 그리고(관절각, 차이 A−X, 토크, IMU) 요약 카드와 관절별 RMSE·상관·추종 오차·진폭비·지연·토크 피크, 단계별 RMSE, 지표 JSON 내려받기. 시작 자세가 달라도 "시작 자세 기준" 으로 비교.
+- **다중 로봇**: 기록 형식이 관절 수·이름에 무관해서 휴머노이드 등 다른 로봇도 같은 화면에서 관리한다. `tools/mujoco_record.py` 로 임의 MJCF(예: Atom 상체, 관절 17개)를 기록하고, `tools/import_run.py` 로 외부 CSV 를 가져온다. 비교는 공통 관절 이름에 대해 한다.
 
 자세한 내용은 [docs/platform.md](https://github.com/shh444/rover-lowlevel/blob/main/docs/platform.md).
 

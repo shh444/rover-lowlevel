@@ -2,33 +2,38 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>Rover 데이터 플랫폼: 시뮬 · 실기 수집과 비교</title>
+<title>Rover 데이터 플랫폼: 시뮬 · 실기 · 다중 로봇 수집과 비교</title>
 <style>
-  :root { --bg:#111; --panel:#181818; --fg:#eee; --muted:#999; --grid:#333; --a:#4da3ff; --b:#ffa34d; --des:#bbb; --ok:#9f9; --bad:#f77; }
+  :root { --bg:#111; --panel:#181818; --fg:#eee; --muted:#999; --grid:#333; --a:#4da3ff; --b:#ffa34d; --c:#7ed07e; --des:#bbb; --ok:#9f9; --bad:#f77; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:18px; padding:10px 16px; border-bottom:1px solid var(--grid); }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; padding:10px 16px; border-bottom:1px solid var(--grid); }
   header b { font-size:16px; }
   nav button { background:none; border:1px solid var(--grid); color:var(--fg); padding:6px 14px; cursor:pointer; border-radius:4px; }
   nav button.active { background:#2a2a2a; border-color:#666; }
   main { padding:12px 16px; }
   section { display:none; } section.active { display:block; }
-  .row { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; margin:6px 0; }
-  label { color:var(--muted); } label input, label select { margin-left:6px; background:#222; color:var(--fg); border:1px solid #444; padding:4px 6px; border-radius:3px; }
-  input[type=number] { width:80px; } input[type=text] { width:160px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; margin:6px 0; }
+  label { color:var(--muted); white-space:nowrap; } label input, label select { margin-left:6px; background:#222; color:var(--fg); border:1px solid #444; padding:4px 6px; border-radius:3px; }
+  input[type=number] { width:76px; } input[type=text] { width:150px; }
   button.act { background:#2d5; color:#000; border:none; padding:7px 16px; border-radius:4px; cursor:pointer; font-weight:600; }
   button.stop { background:#e55; color:#fff; border:none; padding:7px 16px; border-radius:4px; cursor:pointer; font-weight:600; }
   button.sm { background:#333; color:var(--fg); border:1px solid #555; padding:3px 8px; border-radius:3px; cursor:pointer; }
   table { border-collapse:collapse; font-variant-numeric:tabular-nums; width:100%; }
   td, th { border:1px solid var(--grid); padding:4px 8px; text-align:right; white-space:nowrap; }
   th:first-child, td:first-child, td.l, th.l { text-align:left; }
-  tr.sim td:first-child { border-left:4px solid var(--a); } tr.real td:first-child { border-left:4px solid var(--b); }
-  tr.isaac td:first-child { border-left:4px solid #6c6; }
+  tr.sim td:first-child { border-left:4px solid var(--a); } tr.real td:first-child { border-left:4px solid var(--b); } tr.isaac td:first-child { border-left:4px solid var(--c); }
   canvas { display:block; width:100%; height:190px; background:#161616; border:1px solid var(--grid); margin-bottom:8px; }
   pre { background:#0d0d0d; border:1px solid var(--grid); padding:8px; max-height:180px; overflow:auto; font-size:12px; color:#bbb; }
   .legend span { margin-right:14px; } .legend i { display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:5px; }
   .muted { color:var(--muted); } .ok { color:var(--ok); } .bad { color:var(--bad); }
-  #joints label { margin-right:6px; }
   h3 { margin:14px 0 6px; font-size:15px; color:#ddd; }
+  .chip { display:inline-block; padding:2px 9px; margin:2px 4px 2px 0; border:1px solid #555; border-radius:12px; cursor:pointer; color:#bbb; font-size:12px; }
+  .chip.on { background:#2a3f5a; border-color:#4da3ff; color:#fff; }
+  .cards { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+  .card { background:var(--panel); border:1px solid var(--grid); border-radius:6px; padding:8px 12px; min-width:150px; }
+  .card .v { font-size:20px; font-weight:600; } .card .k { color:var(--muted); font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media (max-width:900px) { .grid2 { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -39,33 +44,40 @@
     <button data-tab="runs">기록</button>
     <button data-tab="compare">비교</button>
   </nav>
-  <span id="joints" class="muted"></span>
+  <label>로봇 <select id="flt-robot"><option value="">전체</option></select></label>
+  <label>출처 <select id="flt-label"><option value="">전체</option><option value="sim">sim</option><option value="real">real</option><option value="isaac">isaac</option></select></label>
+  <label>검색 <input id="flt-text" type="text" placeholder="id, 프로그램, 태그"></label>
+  <span id="count" class="muted"></span>
 </header>
 <main>
 
 <section id="collect" class="active">
   <div class="row">
-    <label>대상 <select id="f-backend"><option value="mujoco">시뮬 (MuJoCo)</option><option value="dds">실기 (DDS)</option></select></label>
-    <label>프로그램 <select id="f-program"><option>sine</option><option>hold</option><option>damp</option><option>standup</option></select></label>
+    <label>대상 <select id="f-backend"></select></label>
+    <label>프로그램 <select id="f-program"></select></label>
+    <label id="w-robot">로봇 이름 <input id="f-robot" type="text" value="rover"></label>
+    <label id="w-xml" style="display:none">MJCF <select id="f-xmlsel"></select> <input id="f-xml" type="text" placeholder="또는 xml 경로" style="width:260px"></label>
+  </div>
+  <div class="row">
     <label>시간 s <input id="f-duration" type="number" value="5" step="1"></label>
     <label>amp rad <input id="f-amp" type="number" value="0.1" step="0.01"></label>
     <label>freq Hz <input id="f-freq" type="number" value="0.9" step="0.1"></label>
     <label>관절 <input id="f-joints" type="text" value="thigh"></label>
     <label>kp <input id="f-kp" type="number" value="30" step="1"></label>
     <label>kd <input id="f-kd" type="number" value="1.2" step="0.1"></label>
-    <label>시뮬 시작 자세 <select id="f-start"><option>lying</option><option>standing</option></select></label>
+    <label id="w-start">시작 자세 <select id="f-start"><option>lying</option><option>standing</option></select></label>
     <label><input id="f-viewer" type="checkbox"> 뷰어 창</label>
-    <label><input id="f-fixed" type="checkbox"> 몸통 고정</label>
+    <label id="w-fixed"><input id="f-fixed" type="checkbox"> 몸통 고정</label>
   </div>
   <div class="row">
     <label>태그 <input id="f-tags" type="text" placeholder="쉼표로 구분"></label>
-    <label>메모 <input id="f-note" type="text" style="width:260px"></label>
+    <label>메모 <input id="f-note" type="text" style="width:240px"></label>
     <label id="confirm-wrap" style="display:none">실기 확인 <input id="f-confirm" type="text" placeholder="REAL 입력" style="width:90px"></label>
     <button class="act" id="btn-start">시작</button>
     <button class="stop" id="btn-stop" disabled>정지 (안전 종료)</button>
     <span id="job-status" class="muted"></span>
   </div>
-  <div class="muted">실기는 kill_robot 이후, 로봇을 지지한 상태에서만. 정지 버튼은 SIGINT 를 보내 run.py 가 엎드림/댐핑으로 안전 종료하게 한다. 마지막 명령은 항상 댐핑이다.</div>
+  <div class="muted">실기는 kill_robot 이후, 로봇을 지지한 상태에서만. 정지는 SIGINT 를 보내 run.py 가 엎드림/댐핑으로 안전 종료한다. MJCF 대상은 임의 로봇(예: 휴머노이드 상체)을 범용 기록기로 돌린다.</div>
   <h3>라이브 <span id="live-title" class="muted"></span></h3>
   <div class="legend"><span><i style="background:var(--des)"></i>명령 q_des</span><span><i style="background:var(--a)"></i>측정 q</span></div>
   <div id="live-charts"></div>
@@ -74,9 +86,10 @@
 </section>
 
 <section id="runs">
-  <div class="row"><button class="sm" id="btn-refresh">새로고침</button> <span class="muted">A/B 버튼으로 비교 대상을 고르고 "비교" 탭으로 간다. 파랑=시뮬, 주황=실기.</span></div>
-  <table id="runs-table"><thead><tr><th class="l">기록</th><th class="l">출처</th><th class="l">프로그램</th><th class="l">파라미터</th><th>틱</th><th class="l">상태</th><th class="l">태그</th><th class="l">동작</th></tr></thead><tbody></tbody></table>
+  <div class="row"><button class="sm" id="btn-refresh">새로고침</button> <span class="muted">A/B/C 로 비교 대상을 고르고 "비교" 탭으로. 파랑=sim, 주황=real, 초록=isaac.</span></div>
+  <table id="runs-table"><thead><tr><th class="l">기록</th><th class="l">로봇</th><th class="l">출처</th><th class="l">프로그램</th><th class="l">파라미터</th><th>관절</th><th>틱</th><th class="l">상태</th><th class="l">태그</th><th class="l">동작</th></tr></thead><tbody></tbody></table>
   <h3>기록 보기 <span id="detail-title" class="muted"></span></h3>
+  <div class="row"><label>관절 <input id="d-joints" type="text" placeholder="비우면 구동 관절"></label><label><input id="d-rel" type="checkbox"> 시작 자세 기준</label></div>
   <div class="legend"><span><i style="background:var(--des)"></i>명령 q_des</span><span><i style="background:var(--a)"></i>측정 q</span><span><i style="background:var(--b)"></i>쌍둥이 시뮬 (있으면)</span></div>
   <div id="detail-charts"></div>
 </section>
@@ -85,42 +98,57 @@
   <div class="row">
     <label>A <select id="c-a"></select></label>
     <label>B <select id="c-b"></select></label>
-    <label>관절 <input id="c-joints" type="text" placeholder="비우면 구동 관절" style="width:180px"></label>
-    <label><input id="c-rel" type="checkbox" checked> 시작 자세 기준(상대)</label>
+    <label>C <select id="c-c"><option value="">(없음)</option></select></label>
+    <label><input id="c-rel" type="checkbox" checked> 시작 자세 기준</label>
     <button class="act" id="btn-compare">비교</button>
+    <button class="sm" id="btn-export">지표 JSON 내려받기</button>
     <span id="c-status" class="muted"></span>
   </div>
-  <div class="legend"><span><i style="background:var(--a)"></i>A 측정 q</span><span><i style="background:var(--b)"></i>B 측정 q</span><span><i style="background:var(--des)"></i>A 명령 q_des</span><span><i style="background:#777"></i>B 명령 q_des</span></div>
-  <div id="c-charts"></div>
-  <h3>지표 (B 를 A 의 시각축에 보간, 공통 구간)</h3>
-  <table id="c-metrics"><thead><tr><th class="l">관절</th><th>RMSE A−B</th><th>상관</th><th>추종 RMSE A</th><th>추종 RMSE B</th><th>진폭비 A</th><th>진폭비 B</th><th>지연 A</th><th>지연 B</th><th>토크 피크 A</th><th>토크 피크 B</th></tr></thead><tbody></tbody></table>
-  <h3>단계별 (A 기준)</h3>
-  <table id="c-phase"><thead><tr><th class="l">단계</th><th>t0</th><th>t1</th><th>RMSE A−B</th></tr></thead><tbody></tbody></table>
+  <div class="row"><span class="muted">관절:</span> <span id="c-chips"></span></div>
+  <div class="row"><span class="muted">차트:</span>
+    <label><input class="c-kind" type="checkbox" value="q" checked> 관절각</label>
+    <label><input class="c-kind" type="checkbox" value="diff" checked> 차이 (A − 다른 기록)</label>
+    <label><input class="c-kind" type="checkbox" value="tau" checked> 토크</label>
+    <label><input class="c-kind" type="checkbox" value="imu"> IMU (중력 z·자이로 z)</label>
+  </div>
+  <div class="legend"><span><i style="background:var(--a)"></i>A</span><span><i style="background:var(--b)"></i>B</span><span><i style="background:var(--c)"></i>C</span><span><i style="background:var(--des)"></i>명령 q_des (점선)</span></div>
+  <div id="c-cards" class="cards"></div>
+  <div id="c-charts" class="grid2"></div>
+  <h3>지표 (각 기록을 A 의 시각축에 보간, 공통 구간)</h3>
+  <div id="c-tables"></div>
 </section>
 </main>
 
 <script>
 const $ = s => document.querySelector(s);
-const JOINTS = ["FL_abad","FL_thigh","FL_calf","FR_abad","FR_thigh","FR_calf","RL_abad","RL_thigh","RL_calf","RR_abad","RR_thigh","RR_calf"];
 const f = (x, d = 3, unit = "") => (x == null || Number.isNaN(x)) ? "-" : Number(x).toFixed(d) + unit;
-let currentJob = null, livePoll = null, runsCache = [];
+const COLORS = ["#4da3ff", "#ffa34d", "#7ed07e"];
+const NAMES = { mujoco: "시뮬 (MuJoCo)", dds: "실기 (DDS)", isaac: "Isaac Sim", mjcf: "MJCF 로봇 (범용)" };
+let currentJob = null, livePoll = null, runsCache = [], jobsInfo = null, lastCompare = null, chipState = {};
+let selA = null, selB = null, selC = "";
 
-// ---------- 탭 ----------
+// ---------- 탭·필터 ----------
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === b.dataset.tab));
-  if (b.dataset.tab === "runs") loadRuns();
+  if (b.dataset.tab === "runs") renderRuns();
   if (b.dataset.tab === "compare") fillCompareSelects();
 });
+["flt-robot", "flt-label", "flt-text"].forEach(id => $("#" + id).oninput = () => { renderRuns(); fillCompareSelects(); });
+function filteredRuns() {
+  const r = $("#flt-robot").value, l = $("#flt-label").value, q = $("#flt-text").value.toLowerCase();
+  return runsCache.filter(x => (!r || x.robot === r) && (!l || x.label === l) &&
+    (!q || (x.id + " " + x.program + " " + (x.tags || []).join(" ") + " " + (x.note || "")).toLowerCase().includes(q)));
+}
 
 // ---------- 차트 ----------
 function drawChart(canvas, label, lines, phases) {
   const W = canvas.width = canvas.clientWidth * devicePixelRatio, H = canvas.height = canvas.clientHeight * devicePixelRatio;
   const ctx = canvas.getContext("2d"); ctx.clearRect(0, 0, W, H);
   let tmin = Infinity, tmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  for (const l of lines) for (let i = 0; i < l.t.length; i++) { const x = l.t[i], y = l.y[i]; if (y == null) continue;
+  for (const l of lines) for (let i = 0; i < l.t.length; i++) { const x = l.t[i], y = l.y[i]; if (y == null || Number.isNaN(y)) continue;
     if (x < tmin) tmin = x; if (x > tmax) tmax = x; if (y < ymin) ymin = y; if (y > ymax) ymax = y; }
-  if (!isFinite(ymin) || tmax <= tmin) return;
+  if (!isFinite(ymin) || tmax <= tmin) { ctx.fillStyle = "#666"; ctx.font = `${12 * devicePixelRatio}px system-ui`; ctx.fillText(label + ": 데이터 없음", 10, 20); return; }
   const pad = Math.max(0.02, (ymax - ymin) * 0.15); ymin -= pad; ymax += pad;
   const L = 60 * devicePixelRatio, R = 10, T = 14 * devicePixelRatio, B = 22 * devicePixelRatio;
   const X = v => L + (v - tmin) / (tmax - tmin) * (W - L - R), Y = v => T + (ymax - v) / (ymax - ymin) * (H - T - B);
@@ -130,19 +158,24 @@ function drawChart(canvas, label, lines, phases) {
   ctx.strokeStyle = "#333"; ctx.fillStyle = "#aaa";
   for (let k = 0; k <= 4; k++) { const y = ymin + (ymax - ymin) * k / 4; ctx.beginPath(); ctx.moveTo(L, Y(y)); ctx.lineTo(W - R, Y(y)); ctx.stroke(); ctx.fillText(y.toFixed(3), 4, Y(y) + 4); }
   for (let k = 0; k <= 6; k++) { const x = tmin + (tmax - tmin) * k / 6; ctx.beginPath(); ctx.moveTo(X(x), T); ctx.lineTo(X(x), H - B); ctx.stroke(); ctx.fillText(x.toFixed(1) + "s", X(x) - 10, H - 6); }
+  if (ymin < 0 && ymax > 0) { ctx.strokeStyle = "#555"; ctx.beginPath(); ctx.moveTo(L, Y(0)); ctx.lineTo(W - R, Y(0)); ctx.stroke(); }
   ctx.fillStyle = "#ddd"; ctx.fillText(label, L + 6, T + 22 * devicePixelRatio);
   for (const l of lines) {
     ctx.strokeStyle = l.color; ctx.lineWidth = (l.width || 1.5) * devicePixelRatio; ctx.setLineDash(l.dash ? [6, 4] : []);
     ctx.beginPath(); let pen = false;
-    for (let i = 0; i < l.t.length; i++) { const y = l.y[i]; if (y == null) { pen = false; continue; } const x = X(l.t[i]), yy = Y(y); pen ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); pen = true; }
+    for (let i = 0; i < l.t.length; i++) { const y = l.y[i]; if (y == null || Number.isNaN(y)) { pen = false; continue; } const x = X(l.t[i]), yy = Y(y); pen ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); pen = true; }
     ctx.stroke(); ctx.setLineDash([]);
   }
 }
-function chartsFor(container, names) {
-  container.innerHTML = "";
-  const map = {};
-  for (const n of names) { const c = document.createElement("canvas"); container.appendChild(c); map[n] = c; }
-  return map;
+function chartsFor(container, keys) { container.innerHTML = ""; const map = {}; for (const k of keys) { const c = document.createElement("canvas"); container.appendChild(c); map[k] = c; } return map; }
+function interp(tA, tB, yB) {   // B 를 A 의 시각축으로 선형 보간
+  const out = new Array(tA.length); let j = 0;
+  for (let i = 0; i < tA.length; i++) {
+    const t = tA[i]; while (j < tB.length - 2 && tB[j + 1] < t) j++;
+    if (t < tB[0] || t > tB[tB.length - 1] || yB[j] == null || yB[j + 1] == null) { out[i] = null; continue; }
+    const w = (t - tB[j]) / Math.max(1e-9, tB[j + 1] - tB[j]); out[i] = yB[j] + w * (yB[j + 1] - yB[j]);
+  }
+  return out;
 }
 function drawRunSeries(container, data, withSim) {
   const names = Object.keys(data.series);
@@ -161,20 +194,31 @@ function drawRunSeries(container, data, withSim) {
 }
 
 // ---------- 수집 ----------
-$("#f-backend").onchange = () => { $("#confirm-wrap").style.display = $("#f-backend").value === "dds" ? "" : "none"; };
-(async () => {   // 서버 설정에 있는 백엔드만 보이게 (isaac 은 config.json 에 명령이 있을 때만)
-  try {
-    const d = await (await fetch("/api/jobs")).json();
-    const names = { mujoco: "시뮬 (MuJoCo)", dds: "실기 (DDS)", isaac: "Isaac Sim" };
-    const sel = $("#f-backend"); sel.innerHTML = "";
-    for (const b of d.backends) { const o = document.createElement("option"); o.value = b; o.textContent = names[b] || b; sel.appendChild(o); }
-  } catch (e) {}
-})();
+function backendUI() {
+  const b = $("#f-backend").value;
+  $("#confirm-wrap").style.display = b === "dds" ? "" : "none";
+  $("#w-xml").style.display = b === "mjcf" ? "" : "none";
+  $("#w-start").style.display = (b === "mujoco" || b === "isaac") ? "" : "none";
+  $("#w-fixed").style.display = (b === "mujoco" || b === "isaac") ? "" : "none";
+  const progs = b === "mjcf" ? (jobsInfo?.mjcf_programs || ["hold", "sine", "damp"]) : (jobsInfo?.programs || ["sine", "hold", "damp", "standup"]);
+  const ps = $("#f-program"); const keep = ps.value; ps.innerHTML = ""; for (const p of progs) { const o = document.createElement("option"); o.textContent = p; ps.appendChild(o); } if (progs.includes(keep)) ps.value = keep;
+  if (b === "mjcf") { $("#f-joints").value = $("#f-joints").value === "thigh" ? "all" : $("#f-joints").value; $("#f-amp").value = 0.3; $("#f-freq").value = 0.5; }
+}
+$("#f-backend").onchange = backendUI;
+$("#f-xmlsel").onchange = () => { const v = $("#f-xmlsel").value; if (v) { $("#f-xml").value = jobsInfo.mjcf_models[v]; $("#f-robot").value = v; } };
+async function initCollect() {
+  jobsInfo = await (await fetch("/api/jobs")).json();
+  const sel = $("#f-backend"); sel.innerHTML = "";
+  for (const b of jobsInfo.backends) { const o = document.createElement("option"); o.value = b; o.textContent = NAMES[b] || b; sel.appendChild(o); }
+  const xs = $("#f-xmlsel"); xs.innerHTML = "<option value=''>(config 목록)</option>";
+  for (const [name, path] of Object.entries(jobsInfo.mjcf_models || {})) { const o = document.createElement("option"); o.value = name; o.textContent = name; xs.appendChild(o); }
+  backendUI();
+}
 $("#btn-start").onclick = async () => {
   const body = { backend: $("#f-backend").value, program: $("#f-program").value, duration: +$("#f-duration").value,
     amp: +$("#f-amp").value, freq: +$("#f-freq").value, joints: $("#f-joints").value, kp: +$("#f-kp").value, kd: +$("#f-kd").value,
-    start: $("#f-start").value, viewer: $("#f-viewer").checked, fixed_base: $("#f-fixed").checked,
-    tags: $("#f-tags").value.split(",").map(s => s.trim()).filter(Boolean), note: $("#f-note").value,
+    start: $("#f-start").value, viewer: $("#f-viewer").checked, fixed_base: $("#f-fixed").checked, robot: $("#f-robot").value,
+    xml: $("#f-xml").value, tags: $("#f-tags").value.split(",").map(s => s.trim()).filter(Boolean), note: $("#f-note").value,
     confirm: $("#f-confirm").value };
   if (body.backend === "dds" && !confirm("실기 로봇에 명령을 보냅니다. kill_robot 을 했고, 로봇이 지지되어 있고, 주변이 비어 있습니까?")) return;
   const r = await (await fetch("/api/start", { method: "POST", body: JSON.stringify(body) })).json();
@@ -189,10 +233,7 @@ async function pollJob() {
   const jobs = (await (await fetch("/api/jobs")).json()).jobs;
   const j = jobs.find(x => x.id === currentJob.id); if (!j) return;
   $("#job-log").textContent = (j.log_tail || []).join("\n") || "(로그 없음)";
-  try {
-    const d = await (await fetch(`/api/run/${j.run_id}/series?max=1500`)).json();
-    if (!d.error && d.t && d.t.length) drawRunSeries($("#live-charts"), d, false);
-  } catch (e) {}
+  try { const d = await (await fetch(`/api/run/${j.run_id}/series?max=1500`)).json(); if (!d.error && d.t && d.t.length) drawRunSeries($("#live-charts"), d, false); } catch (e) {}
   if (!j.running) {
     clearInterval(livePoll); livePoll = null; $("#btn-stop").disabled = true;
     $("#job-status").innerHTML = j.returncode === 0 ? `<span class="ok">완료: ${j.run_id}</span>` : `<span class="bad">종료 코드 ${j.returncode}: ${j.run_id} (안전 종료 후 기록 확인)</span>`;
@@ -201,70 +242,139 @@ async function pollJob() {
 }
 
 // ---------- 기록 ----------
-let selA = null, selB = null;
 async function loadRuns() {
   const d = await (await fetch("/api/runs")).json();
-  runsCache = d.runs; $("#joints").textContent = "";
+  runsCache = d.runs;
+  const rs = $("#flt-robot"); const keep = rs.value; rs.innerHTML = "<option value=''>전체</option>";
+  for (const r of d.robots) { const o = document.createElement("option"); o.value = r; o.textContent = r; rs.appendChild(o); } rs.value = keep;
+  renderRuns(); fillCompareSelects();
+}
+function renderRuns() {
+  const list = filteredRuns();
+  $("#count").textContent = `${list.length} / ${runsCache.length} 기록`;
   const tb = $("#runs-table tbody"); tb.innerHTML = "";
-  for (const r of d.runs) {
-    const p = r.params || {}; const ps = Object.entries(p).filter(([k, v]) => v != null && k !== "exit" && k !== "start").map(([k, v]) => `${k}=${v}`).join(" ");
+  for (const r of list) {
+    const p = r.params || {}; const ps = Object.entries(p).filter(([k, v]) => v != null && !["exit", "start", "xml", "csv"].includes(k)).map(([k, v]) => `${k}=${v}`).join(" ");
     const tr = document.createElement("tr"); tr.className = ["real", "sim", "isaac"].includes(r.label) ? r.label : "";
-    tr.innerHTML = `<td class="l">${r.id}</td><td class="l">${r.label} (${r.source})</td><td class="l">${r.program}</td><td class="l muted">${ps}</td>
-      <td>${r.ticks ?? "-"}</td><td class="l ${r.status === "completed" ? "ok" : (r.status === "running" ? "" : "bad")}">${r.status}</td>
+    tr.innerHTML = `<td class="l">${r.id}</td><td class="l">${r.robot}</td><td class="l">${r.label} (${r.source})</td><td class="l">${r.program}</td><td class="l muted">${ps}</td>
+      <td>${r.n_joints ?? "-"}</td><td>${r.ticks ?? "-"}</td><td class="l ${r.status === "completed" ? "ok" : (r.status === "running" ? "" : "bad")}">${r.status}</td>
       <td class="l">${(r.tags || []).join(", ")}${r.note ? " · " + r.note : ""}</td>
-      <td class="l"><button class="sm" data-view="${r.id}">차트</button> <button class="sm" data-a="${r.id}">A</button> <button class="sm" data-b="${r.id}">B</button> <button class="sm" data-tag="${r.id}">태그</button></td>`;
+      <td class="l"><button class="sm" data-view="${r.id}">차트</button> <button class="sm" data-a="${r.id}">A</button> <button class="sm" data-b="${r.id}">B</button> <button class="sm" data-c="${r.id}">C</button> <button class="sm" data-tag="${r.id}">태그</button></td>`;
     tb.appendChild(tr);
   }
   tb.querySelectorAll("[data-view]").forEach(b => b.onclick = () => viewRun(b.dataset.view));
   tb.querySelectorAll("[data-a]").forEach(b => b.onclick = () => { selA = b.dataset.a; fillCompareSelects(); $("#c-status").textContent = `A=${selA}`; });
   tb.querySelectorAll("[data-b]").forEach(b => b.onclick = () => { selB = b.dataset.b; fillCompareSelects(); $("#c-status").textContent = `B=${selB}`; });
+  tb.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { selC = b.dataset.c; fillCompareSelects(); $("#c-status").textContent = `C=${selC}`; });
   tb.querySelectorAll("[data-tag]").forEach(b => b.onclick = async () => {
     const r = runsCache.find(x => x.id === b.dataset.tag); const tags = prompt("태그 (쉼표)", (r.tags || []).join(",")); if (tags == null) return;
-    const note = prompt("메모", r.note || ""); await fetch(`/api/run/${r.id}/meta`, { method: "POST", body: JSON.stringify({ tags: tags.split(",").map(s => s.trim()).filter(Boolean), note: note ?? "" }) }); loadRuns();
+    const note = prompt("메모", r.note || ""); const robot = prompt("로봇 이름", r.robot || "rover");
+    await fetch(`/api/run/${r.id}/meta`, { method: "POST", body: JSON.stringify({ tags: tags.split(",").map(s => s.trim()).filter(Boolean), note: note ?? "", robot: robot || r.robot }) }); loadRuns();
   });
 }
+let detailId = null;
 async function viewRun(id) {
-  const d = await (await fetch(`/api/run/${id}/series`)).json();
+  detailId = id;
+  const rel = $("#d-rel").checked ? 1 : 0;
+  const d = await (await fetch(`/api/run/${id}/series?joints=${encodeURIComponent($("#d-joints").value)}&rel=${rel}`)).json();
   if (d.error) { $("#detail-title").textContent = d.error; return; }
-  $("#detail-title").textContent = `${id} (${d.label}, ${d.rows}틱)`;
+  $("#detail-title").textContent = `${id} (${d.robot}, ${d.label}, ${d.rows}틱, 관절 ${d.joints.length}개: ${d.joints.join(", ")})`;
   drawRunSeries($("#detail-charts"), d, true);
 }
+$("#d-joints").onchange = () => detailId && viewRun(detailId); $("#d-rel").onchange = () => detailId && viewRun(detailId);
 $("#btn-refresh").onclick = loadRuns;
 
 // ---------- 비교 ----------
 function fillCompareSelects() {
-  for (const [sel, cur] of [[$("#c-a"), selA], [$("#c-b"), selB]]) {
-    const keep = cur || sel.value; sel.innerHTML = "";
-    for (const r of runsCache) { const o = document.createElement("option"); o.value = r.id; o.textContent = `${r.label}: ${r.id}`; sel.appendChild(o); }
-    if (keep) sel.value = keep;
+  const list = filteredRuns();
+  for (const [sel, cur, none] of [[$("#c-a"), selA, false], [$("#c-b"), selB, false], [$("#c-c"), selC, true]]) {
+    const keep = cur ?? sel.value; sel.innerHTML = none ? "<option value=''>(없음)</option>" : "";
+    for (const r of list) { const o = document.createElement("option"); o.value = r.id; o.textContent = `${r.label} · ${r.robot} · ${r.id}`; sel.appendChild(o); }
+    if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
   }
 }
-$("#btn-compare").onclick = async () => {
-  const a = $("#c-a").value, b = $("#c-b").value; if (!a || !b) return;
+function selectedChips() { return Object.entries(chipState).filter(([k, v]) => v).map(([k]) => k); }
+function renderChips(names, all) {
+  const box = $("#c-chips"); box.innerHTML = "";
+  for (const n of all) {
+    if (!(n in chipState)) chipState[n] = names.includes(n);
+    const s = document.createElement("span"); s.className = "chip" + (chipState[n] ? " on" : ""); s.textContent = n;
+    s.onclick = () => { chipState[n] = !chipState[n]; s.classList.toggle("on", chipState[n]); renderCompare(); };
+    box.appendChild(s);
+  }
+}
+$("#btn-compare").onclick = () => runCompare(true);
+document.querySelectorAll(".c-kind").forEach(c => c.onchange = () => renderCompare());
+$("#c-rel").onchange = () => runCompare(false);
+async function runCompare(resetChips) {
+  const ids = [$("#c-a").value, $("#c-b").value, $("#c-c").value].filter(Boolean);
+  if (ids.length < 2) { $("#c-status").textContent = "A 와 B 를 고르세요"; return; }
   $("#c-status").textContent = "계산 중…";
   const rel = $("#c-rel").checked ? 1 : 0;
-  const d = await (await fetch(`/api/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&joints=${encodeURIComponent($("#c-joints").value)}&rel=${rel}`)).json();
+  const joints = resetChips ? "" : selectedChips().join(",");
+  const d = await (await fetch(`/api/compare?runs=${encodeURIComponent(ids.join(","))}&joints=${encodeURIComponent(joints)}&rel=${rel}`)).json();
   if (d.error) { $("#c-status").innerHTML = `<span class="bad">${d.error}</span>`; return; }
-  const m = d.metrics;
-  $("#c-status").textContent = `공통 ${f(m.common_seconds, 1, "s")}, RMSE A−B 전체 ${f(m.rmse_ab_all)} rad${rel ? " (시작 자세 기준)" : ""}  (A=${m.a.label} ${m.a.program}, B=${m.b.label} ${m.b.program})`;
-  const cv = chartsFor($("#c-charts"), m.joints.concat(["__tau"]));
-  for (const n of m.joints) {
-    const sa = d.series.a.series[n], sb = d.series.b.series[n];
-    drawChart(cv[n], n + " [rad]", [
-      { t: d.series.a.t, y: sa.qdes, color: "#bbb", dash: true }, { t: d.series.b.t, y: sb.qdes, color: "#777", dash: true },
-      { t: d.series.a.t, y: sa.q, color: "#4da3ff" }, { t: d.series.b.t, y: sb.q, color: "#ffa34d" }], d.series.a.phases);
+  lastCompare = d;
+  if (resetChips) { chipState = {}; }
+  const all = [...new Set(Object.values(d.series).flatMap(s => s.joints))];
+  renderChips(d.joints, all);
+  renderCompare();
+}
+function renderCompare() {
+  const d = lastCompare; if (!d) return;
+  const ids = Object.keys(d.series);
+  const A = d.series[d.reference];
+  const kinds = [...document.querySelectorAll(".c-kind:checked")].map(c => c.value);
+  const names = selectedChips().filter(n => n in A.series);
+  const pairs = d.pairs;
+  $("#c-status").textContent = `기준 A=${d.reference} (${A.robot}, ${A.label}) · 비교 ${pairs.length}건 · 공통 ${f(pairs[0]?.common_seconds, 1, "s")}${d.relative ? " · 시작 자세 기준" : ""}`;
+  // 요약 카드
+  const cards = $("#c-cards"); cards.innerHTML = "";
+  for (const [i, p] of pairs.entries()) {
+    const drivenA = Object.values(p.per_joint).map(v => v.amp_ratio_a).filter(x => x != null), drivenB = Object.values(p.per_joint).map(v => v.amp_ratio_b).filter(x => x != null);
+    const lagA = Object.values(p.per_joint).map(v => v.lag_a_ms).filter(x => x != null), lagB = Object.values(p.per_joint).map(v => v.lag_b_ms).filter(x => x != null);
+    const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    cards.innerHTML += `<div class="card"><div class="k">A − ${["B", "C"][i]} (${p.b.label} · ${p.b.robot})</div><div class="v">${f(p.rmse_ab_all)} rad</div><div class="k">RMSE, 관절 ${p.joints.length}개</div></div>
+      <div class="card"><div class="k">진폭비 A / ${["B", "C"][i]}</div><div class="v">${f(mean(drivenA), 2)} / ${f(mean(drivenB), 2)}</div><div class="k">움직인 폭 ÷ 명령 폭</div></div>
+      <div class="card"><div class="k">지연 A / ${["B", "C"][i]}</div><div class="v">${f(mean(lagA), 0)} / ${f(mean(lagB), 0)} ms</div><div class="k">명령 대비</div></div>`;
   }
-  const n0 = m.joints[0];
-  drawChart(cv.__tau, n0 + " 토크 [N·m]", [{ t: d.series.a.t, y: d.series.a.series[n0].tau, color: "#4da3ff" }, { t: d.series.b.t, y: d.series.b.series[n0].tau, color: "#ffa34d" }], d.series.a.phases);
-  const tb = $("#c-metrics tbody"); tb.innerHTML = "";
-  for (const [n, v] of Object.entries(m.per_joint)) tb.innerHTML += `<tr><td class="l">${n}</td><td>${f(v.rmse_ab)}</td><td>${f(v.corr_ab, 2)}</td><td>${f(v.track_rmse_a)}</td><td>${f(v.track_rmse_b)}</td>
-    <td>${f(v.amp_ratio_a, 2)}</td><td>${f(v.amp_ratio_b, 2)}</td><td>${f(v.lag_a_ms, 0, " ms")}</td><td>${f(v.lag_b_ms, 0, " ms")}</td><td>${f(v.tau_peak_a, 2)}</td><td>${f(v.tau_peak_b, 2)}</td></tr>`;
-  const pb = $("#c-phase tbody"); pb.innerHTML = "";
-  for (const p of m.per_phase) pb.innerHTML += `<tr><td class="l">${p.phase}</td><td>${f(p.t0, 2)}</td><td>${f(p.t1, 2)}</td><td>${f(p.rmse_ab)}</td></tr>`;
+  // 차트
+  const keys = [];
+  for (const n of names) { if (kinds.includes("q")) keys.push("q:" + n); if (kinds.includes("diff")) keys.push("diff:" + n); }
+  if (kinds.includes("tau") && names[0]) keys.push("tau:" + names[0]);
+  if (kinds.includes("imu")) keys.push("imu:grav", "imu:gyro");
+  const cv = chartsFor($("#c-charts"), keys);
+  ids.forEach((id, i) => { d.series[id].__color = COLORS[i]; });
+  for (const n of names) {
+    if (kinds.includes("q")) drawChart(cv["q:" + n], n + " [rad]",
+      ids.flatMap(id => { const s = d.series[id]; if (!s.series[n]) return []; const lines = [{ t: s.t, y: s.series[n].q, color: s.__color }]; if (id === d.reference) lines.unshift({ t: s.t, y: s.series[n].qdes, color: "#bbb", dash: true }); return lines; }), A.phases);
+    if (kinds.includes("diff")) drawChart(cv["diff:" + n], n + " 차이 A − X [rad]",
+      ids.filter(id => id !== d.reference && d.series[id].series[n]).map(id => { const s = d.series[id]; const yb = interp(A.t, s.t, s.series[n].q); return { t: A.t, y: A.series[n].q.map((y, i) => (y == null || yb[i] == null) ? null : y - yb[i]), color: s.__color }; }), A.phases);
+  }
+  if (kinds.includes("tau") && names[0]) drawChart(cv["tau:" + names[0]], names[0] + " 토크 [N·m]",
+    ids.filter(id => d.series[id].series[names[0]]).map(id => ({ t: d.series[id].t, y: d.series[id].series[names[0]].tau, color: d.series[id].__color })), A.phases);
+  if (kinds.includes("imu")) {
+    drawChart(cv["imu:grav"], "몸체 중력 z (−1 = 수평)", ids.map(id => ({ t: d.series[id].t, y: d.series[id].grav_z, color: d.series[id].__color })), A.phases);
+    drawChart(cv["imu:gyro"], "자이로 z [rad/s]", ids.filter(id => d.series[id].gyro_z).map(id => ({ t: d.series[id].t, y: d.series[id].gyro_z, color: d.series[id].__color })), A.phases);
+  }
+  // 표
+  const tables = $("#c-tables"); tables.innerHTML = "";
+  for (const [i, p] of pairs.entries()) {
+    let h = `<h3>A vs ${["B", "C"][i]}: ${p.b.id} (${p.b.label} · ${p.b.robot} · ${p.b.program})</h3><table><thead><tr><th class="l">관절</th><th>RMSE A−X</th><th>최대차</th><th>상관</th><th>추종 RMSE A</th><th>추종 RMSE X</th><th>진폭비 A</th><th>진폭비 X</th><th>지연 A</th><th>지연 X</th><th>토크 피크 A</th><th>토크 피크 X</th></tr></thead><tbody>`;
+    for (const [n, v] of Object.entries(p.per_joint)) if (names.includes(n)) h += `<tr><td class="l">${n}</td><td>${f(v.rmse_ab)}</td><td>${f(v.maxabs_ab)}</td><td>${f(v.corr_ab, 2)}</td><td>${f(v.track_rmse_a)}</td><td>${f(v.track_rmse_b)}</td><td>${f(v.amp_ratio_a, 2)}</td><td>${f(v.amp_ratio_b, 2)}</td><td>${f(v.lag_a_ms, 0, " ms")}</td><td>${f(v.lag_b_ms, 0, " ms")}</td><td>${f(v.tau_peak_a, 2)}</td><td>${f(v.tau_peak_b, 2)}</td></tr>`;
+    h += `</tbody></table><table style="margin-top:6px"><thead><tr><th class="l">단계 (A 기준)</th><th>t0</th><th>t1</th><th>RMSE A−X</th></tr></thead><tbody>`;
+    for (const ph of p.per_phase) h += `<tr><td class="l">${ph.phase}</td><td>${f(ph.t0, 2)}</td><td>${f(ph.t1, 2)}</td><td>${f(ph.rmse_ab)}</td></tr>`;
+    tables.innerHTML += h + "</tbody></table>";
+  }
+}
+$("#btn-export").onclick = () => {
+  if (!lastCompare) return;
+  const blob = new Blob([JSON.stringify({ reference: lastCompare.reference, relative: lastCompare.relative, joints: lastCompare.joints, pairs: lastCompare.pairs }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `compare-${lastCompare.reference}.json`; a.click();
 };
 
-window.addEventListener("resize", () => {});
-loadRuns();
+window.addEventListener("resize", () => { renderCompare(); });
+initCollect(); loadRuns();
 </script>
 </body>
 </html>
