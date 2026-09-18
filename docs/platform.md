@@ -65,6 +65,7 @@ python datalab/server.py --root runs --port 8095            # 브라우저: http
 | `mjcf_models` | 수집 탭 MJCF 목록: 이름 → xml 경로 (예: `"atom_upper": "../thor-backup-20260916/extracted/atom-max-lab/atom_upper_available_meshes.xml"`) |
 | `limits` | `amp_max` 0.5, `kp_max` 100, `kd_max` 5, `duration_max` 600 |
 | `sim_realtime` | 플랫폼에서 시작한 시뮬을 벽시계 페이싱으로 (기본 true) |
+| `realtime_backends` | 페이싱을 거는 백엔드 목록 (기본 `["mujoco"]`). Isaac Sim 은 실시간보다 느려 제외한다 |
 
 `_` 로 시작하는 키는 주석·예시로 무시된다.
 

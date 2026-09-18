@@ -132,7 +132,9 @@ class Jobs:
                     "--robot", robot or "rover"]
             if backend in ("mujoco", "isaac") and req.get("start") in ("lying", "standing"):
                 args += ["--start", req["start"]]
-            if backend in ("mujoco", "isaac") and self.cfg.get("sim_realtime", True):
+            # 벽시계 페이싱은 실시간보다 빠른 시뮬(MuJoCo)에만 건다. Isaac Sim 은 1 ms substep 에서 실시간의 약 1/3.5 속도라
+            # 페이싱을 걸면 모든 틱이 기한 초과로 찍힌다 (config 의 realtime_backends 로 조정)
+            if backend in self.cfg.get("realtime_backends", ["mujoco"]) and self.cfg.get("sim_realtime", True):
                 args += ["--realtime"]
             if backend in ("mujoco", "isaac") and req.get("viewer"):
                 args += ["--viewer"]

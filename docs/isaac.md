@@ -94,5 +94,7 @@ C:\isaac-venv\Scripts\python.exe examples\e4_sine_joint.py --backend isaac      
 - Isaac Sim API 는 버전마다 바뀐다. 6.x 에서 `isaacsim.core.api`(World)·`isaacsim.core.prims`(SingleArticulation)·`isaacsim.core.utils` 는
   **deprecated**(`extsDeprecated/`)이고, 이 백엔드는 대체 API(`isaacsim.core.experimental.*`, `SimulationManager`, `URDFImporter`)만 쓴다.
 - 렌더링 없이(headless) 돌려도 Isaac Sim 은 시작에 약 12 s(첫 실행은 1–2 분: 셰이더·확장 캐시), Newton 은 첫 회 커널 컴파일이 더 걸린다. 짧은 실험은 MuJoCo 가 훨씬 빠르다.
+- 속도: 1 ms substep 마다 파이썬에서 PD 를 계산하므로 실시간보다 느리다 (sim 7 s 에 PhysX 약 24 s, Newton 약 44 s). 그래서 `--realtime` 페이싱은 의미가 없고
+  (모든 틱이 기한 초과로 찍힌다), 플랫폼도 Isaac 에는 페이싱을 걸지 않는다 (`realtime_backends`). 시뮬 시간축은 틱 기준이라 결과에는 영향이 없다.
 - RL 학습(Isaac Lab / legged_gym) 은 이 백엔드의 범위가 아니다. Dobot 의 `dobot_rl_gym` 은 Isaac Gym Preview(구버전) 기반이다.
 - 패키지에 NVIDIA 가 넣은 에이전트용 문서(`isaacsim/AGENTS.md`, `isaacsim/skills/*/SKILL.md`)가 6.1 API 참고 자료로 유용하다.
