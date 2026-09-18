@@ -30,16 +30,19 @@ def main():
     ap.add_argument("--kp", type=float, default=30.0)
     ap.add_argument("--kd", type=float, default=1.2)
     ap.add_argument("--out", default="runs/isaac-smoke")
+    ap.add_argument("--snap", action="store_true", help="뷰포트 이미지 2장 저장 (댐핑 끝, 유지 끝). 헤드리스여도 렌더링을 켠다")
     a = ap.parse_args()
 
     if not eula_accepted():
         print(EULA_MSG)
         sys.exit(3)
-    io = IsaacBackend(urdf_path=a.urdf, headless=not a.viewer, fixed_base=not a.free_base, engine=a.engine)
+    io = IsaacBackend(urdf_path=a.urdf, headless=not a.viewer, fixed_base=not a.free_base, engine=a.engine,
+                      render=a.snap)
+    snaps = {380: "view_damp.png", 980: "view_hold.png"} if a.snap else {}
     state0 = io.wait_ready()
     print("dof 순서 OK, 첫 상태 q =", fmt(state0.q), "base_z =", round(float(state0.extra["base_pos"][2]), 3))
     errs = []
-    with Session(io, dt=0.005, realtime=a.viewer, exit_mode="damp", log_path=Path(a.out) / "trace.csv",
+    with Session(io, dt=0.005, realtime=False, exit_mode="damp", log_path=Path(a.out) / "trace.csv",
                  meta={"program": "isaac_smoke", "params": {"kp": a.kp, "kd": a.kd, "engine": a.engine,
                                                             "fixed_base": not a.free_base},
                        "tags": ["isaac", "smoke"]}) as s:
@@ -54,6 +57,9 @@ def main():
                     errs.append(np.abs(cmd.q - state.q))
             if s.tick % 200 == 0:
                 print(f"t={t:4.1f}s {s.phase:<5} q={fmt(state.q)} |tau|max={abs(state.tau_est).max():.2f}")
+            if s.tick in snaps:
+                ok = io.snapshot(Path(a.out) / snaps[s.tick])
+                print(f"스냅샷 {snaps[s.tick]}: {'OK' if ok else '실패'}")
     if errs:
         e = np.array(errs)
         print(f"유지 오차: 평균 {e.mean():.4f} rad, 최대 {e.max():.4f} rad → {'PASS' if e.max() < 0.1 else 'CHECK'}")

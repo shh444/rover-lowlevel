@@ -85,7 +85,8 @@ class IsaacBackend:
     def __init__(self, urdf_path=None, dt: float = 0.005, physics_dt: float = 0.001, start: str = "lying",
                  fixed_base: bool = False, headless: bool = True, init_q=None, init_base_z=None,
                  render_every_tick: int = 4, engine: str = "physx", device: str = "cpu", usd_cache=None,
-                 physics_variant: str | None = None):
+                 physics_variant: str | None = None, render: bool = False, fabric: bool = True,
+                 render_fps: float = 30.0):
         urdf = Path(urdf_path) if urdf_path else find_default_urdf()
         if urdf is None or not urdf.exists():
             raise FileNotFoundError(f"URDF 없음: {urdf} (--urdf 또는 ROVER_VENDOR 로 지정)")
@@ -96,11 +97,15 @@ class IsaacBackend:
             raise ValueError("dt 는 physics_dt 의 정수배여야 합니다")
         self.headless = bool(headless)
         self.render_every_tick = max(1, int(render_every_tick))
+        self.render_enabled = (not self.headless) or bool(render)     # 창이 있거나, 헤드리스여도 스냅샷용 렌더링을 켠 경우
         self.fixed_base = bool(fixed_base)
         self.engine = engine
         self.device = device
         self.usd_cache = Path(usd_cache) if usd_cache else ROOT / ".isaac_cache"
         self.physics_variant = physics_variant
+        self.fabric = bool(fabric)
+        self.render_period = 1.0 / max(1.0, float(render_fps))
+        self._last_render = 0.0
         self.mode = "manual"
         self.tick = 0
         self.last_tau = np.zeros(NUM_JOINTS)
@@ -121,7 +126,7 @@ class IsaacBackend:
                # fast_shutdown=True(기본) 는 프로세스를 즉시 끝내므로 close() 가 진행 중 예외를 먼저 출력한다.
                # 정상 종료(느리고 종료 시 segfault 가 날 수 있음)를 원하면 ROVER_ISAAC_FAST_SHUTDOWN=0
                "fast_shutdown": os.environ.get("ROVER_ISAAC_FAST_SHUTDOWN", "1") == "1"}
-        if self.headless:
+        if not self.render_enabled:
             cfg["disable_viewport_updates"] = True
         t0 = time.perf_counter()
         self.app = SimulationApp(cfg)
@@ -195,10 +200,18 @@ class IsaacBackend:
         SimulationManager.setup_simulation(dt=self.physics_dt, device=self.device)
 
         stage = stage_utils.get_current_stage()
-        if not self.fixed_base:
-            from omni.physx.scripts import physicsUtils
-            from pxr import Gf
-            physicsUtils.add_ground_plane(stage, "/World/ground", "Z", 50.0, Gf.Vec3f(0.0), Gf.Vec3f(0.5))
+        from omni.physx.scripts import physicsUtils
+        from pxr import Gf
+        # 바닥: 자유 베이스는 접촉면, 고정 베이스(0.85 m)는 발이 닿지 않아 물리 영향 없이 기준면 역할만 한다
+        physicsUtils.add_ground_plane(stage, "/World/ground", "Z", 50.0, Gf.Vec3f(0.0), Gf.Vec3f(0.18, 0.2, 0.22))
+        if self.render_enabled:                                       # 빈 스테이지에는 조명이 없어 로봇이 검게 보인다
+            from pxr import UsdGeom, UsdLux
+            dome = UsdLux.DomeLight.Define(stage, "/World/DomeLight")
+            dome.CreateIntensityAttr(350.0)
+            key = UsdLux.DistantLight.Define(stage, "/World/KeyLight")
+            key.CreateIntensityAttr(1800.0)
+            key.CreateAngleAttr(1.0)
+            UsdGeom.Xformable(key.GetPrim()).AddRotateXYZOp().Set(Gf.Vec3f(-50.0, 0.0, 35.0))
         usd = self._import_urdf()
         # 변환 결과는 다중 물리(variant set "Physics": physx / mujoco / physics / none) 패키지라 엔진에 맞는 variant 를 골라야
         # 관절·ArticulationRootAPI 가 생긴다 (기본 선택이 none 이면 물리 없음)
@@ -226,17 +239,22 @@ class IsaacBackend:
         self.robot = Articulation(ROBOT_PRIM)
         print(f"[isaac] Articulation: {self.robot.paths}", flush=True)
 
+        # PhysX 결과를 substep(1 ms)마다 USD 에 쓰면 매우 느리다 → fabric 으로 보내고(USD 갱신 끔) 화면 갱신 때만 반영한다
+        if self.fabric:
+            try:
+                SimulationManager.enable_fabric(True)
+            except Exception as exc:
+                print(f"[isaac] fabric 켜기 실패 (USD 갱신으로 진행): {exc}")
         # 물리 초기화: 타임라인 없이 수동 (실패 시 타임라인 재생 방식으로 전환)
         SimulationManager.initialize_physics()
         print(f"[isaac] 물리 초기화 (수동) → tensor valid={self.robot.is_physics_tensor_entity_valid()}", flush=True)
-        if not self.robot.is_physics_tensor_entity_valid():
+        if not self.robot.is_physics_tensor_entity_valid() or os.environ.get("ROVER_ISAAC_MODE") == "timeline":
+            self._setup_timeline()
             app_utils.play()
             self.app.update()
-        if not self.robot.is_physics_tensor_entity_valid():
-            raise RuntimeError("Isaac Sim 물리 텐서 뷰를 만들지 못했습니다 (articulation 초기화 실패)")
-        if app_utils.is_playing():
+            if not self.robot.is_physics_tensor_entity_valid():
+                raise RuntimeError("Isaac Sim 물리 텐서 뷰를 만들지 못했습니다 (articulation 초기화 실패)")
             self.mode = "timeline"
-            self._setup_timeline()
         print(f"[isaac] 물리 엔진 {self.engine_active}, 진행 방식 {self.mode}, physics_dt {self.physics_dt * 1e3:.1f} ms × {self.substeps}")
 
         names = list(self.robot.dof_names)
@@ -256,20 +274,34 @@ class IsaacBackend:
         full[0, self.idx] = q0
         self.robot.set_dof_positions(full)
         self.robot.set_dof_velocities(np.zeros((1, self.ndof)))
+        if not self.fixed_base:
+            # 물리 초기화의 워밍업 스텝은 관절 0(다리를 편 자세)으로 돌아서 발이 바닥을 뚫고, 그 반발로 몸통에 속도가 생긴다.
+            # 관절을 시작 자세로 옮긴 뒤 몸통 자세와 속도도 다시 맞춘다 (안 하면 시작하자마자 솟구치며 기울어 넘어짐 판정).
+            self.robot.set_world_poses(positions=np.array([[0.0, 0.0, z]]), orientations=np.array([[1.0, 0.0, 0.0, 0.0]]))
+            self.robot.set_velocities(linear_velocities=np.zeros((1, 3)), angular_velocities=np.zeros((1, 3)))
         self._step_physics(1)
-        if not self.headless:
-            self.app.update()
+        if self.render_enabled:
+            try:
+                from isaacsim.core.rendering_manager import ViewportManager
+                ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[1.7, 1.5, z + 0.45], target=[0.0, 0.0, z - 0.25])
+            except Exception as exc:
+                print(f"[isaac] 카메라 설정 생략: {exc}")
+            for _ in range(3):
+                self._render()
 
     def _setup_timeline(self):
         """타임라인 재생 방식: app.update() 한 번이 제어 주기 dt 만큼 진행하도록 고정 시간 간격을 건다."""
+        import carb
         import omni.timeline
         tl = omni.timeline.get_timeline_interface()
-        try:
-            tl.set_fixed_time_stepping(True)
-            tl.set_target_framerate(round(1.0 / self.dt))
-            self._stage_utils.set_stage_time_code(0.0)
-        except Exception as exc:
-            print(f"[isaac] 타임라인 고정 시간 간격 설정 실패: {exc}")
+        rate = round(1.0 / self.dt)
+        for name, fn in (("useFixedTimeStepping", lambda: carb.settings.get_settings().set_bool("/app/player/useFixedTimeStepping", True)),
+                         ("target_framerate", lambda: tl.set_target_framerate(rate)),
+                         ("time_codes_per_second", lambda: tl.set_time_codes_per_second(rate))):
+            try:
+                fn()
+            except Exception as exc:
+                print(f"[isaac] 타임라인 설정 {name} 실패: {exc}")
 
     # ---- 물리 진행 ----
     def _step_physics(self, n: int):
@@ -327,8 +359,10 @@ class IsaacBackend:
         self.last_tau = tau
         self.tick += 1
         if not self.headless:
-            if self.mode == "manual" and self.tick % self.render_every_tick == 0:
-                self.app.update()
+            now = time.perf_counter()                                  # 화면은 벽시계 기준 render_fps 로만 갱신
+            if self.mode == "manual" and now - self._last_render >= self.render_period:
+                self._last_render = now
+                self._render()
             if not self.app.is_running():
                 raise KeyboardInterrupt
 
@@ -337,8 +371,47 @@ class IsaacBackend:
         g = self.robot.get_dof_gravity_compensation_forces().numpy()[0][self.idx]
         return np.asarray(g, dtype=float)
 
+    def _render(self) -> None:
+        """물리를 진행하지 않고 화면만 갱신한다. PhysX fabric 이 켜져 있으면 최신 물리 결과를 먼저 fabric 에 반영한다."""
+        try:
+            if self.mode == "manual" and self._sm.is_fabric_enabled():
+                import omni.physxfabric
+                view = self._sm.get_physics_sim_view()
+                if view is not None and hasattr(view, "update_articulations_kinematic"):
+                    view.update_articulations_kinematic()              # 링크 자세를 렌더링용으로 갱신 (Isaac Lab 방식)
+                omni.physxfabric.get_physx_fabric_interface().update(0.0, 0.0)   # (0, 0): 시간과 무관하게 즉시 반영
+        except Exception as exc:
+            if not getattr(self, "_fabric_warned", False):
+                self._fabric_warned = True
+                print(f"[isaac] fabric 갱신 실패: {type(exc).__name__}: {exc}", flush=True)
+        try:
+            from isaacsim.core.rendering_manager import RenderingManager
+            RenderingManager.render()
+        except Exception:
+            self.app.update()
+
     def snapshot(self, path) -> bool:
-        return False
+        """뷰포트 이미지를 저장한다 (창 모드 또는 render=True 인 헤드리스). 확장자에 따라 png/jpg."""
+        if not self.render_enabled:
+            return False
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                path.unlink()
+            vp = get_active_viewport()
+            if vp is None:
+                return False
+            capture_viewport_to_file(vp, str(path))
+            for _ in range(90):
+                self._render()
+                if path.exists() and path.stat().st_size > 0:
+                    return True
+            return path.exists()
+        except Exception as exc:
+            print(f"[isaac] 스냅샷 실패: {exc}")
+            return False
 
     def close(self) -> None:
         """Kit 종료는 인터프리터가 끝날 때로 미룬다. fast_shutdown(기본) 은 app.close() 에서 프로세스를 즉시 끝내므로

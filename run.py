@@ -67,7 +67,7 @@ def parse_args(argv=None):
     m.add_argument("--physics-dt", type=float, default=0.001)
     m.add_argument("--seed", type=int, default=0)
     m.add_argument("--realtime", action="store_true", help="시뮬도 벽시계에 맞춰 실행")
-    m.add_argument("--viewer", action="store_true", help="MuJoCo 뷰어 창을 열어 지켜본다 (realtime 자동 적용)")
+    m.add_argument("--viewer", action="store_true", help="뷰어 창을 열어 지켜본다 (MuJoCo 는 realtime 자동 적용, Isaac Sim 은 앱 창이 뜬다)")
     m.add_argument("--snapshot", action="store_true", help="프로그램 종료·최종 시점 이미지 저장(EGL)")
     m.add_argument("--render-every", type=int, default=0, help="N 틱마다 frames/ 에 이미지 저장")
     d = p.add_argument_group("dds")
@@ -90,7 +90,7 @@ def make_backend(args, out: Path):
         from lowlevel.backend_isaac import IsaacBackend
         return IsaacBackend(urdf_path=args.urdf, dt=args.dt, physics_dt=args.physics_dt, start=args.start,
                             fixed_base=args.fixed_base, headless=not args.viewer, engine=args.isaac_engine,
-                            device=args.isaac_device)
+                            device=args.isaac_device, render=args.snapshot)
     from lowlevel.backend_dds import DdsBackend
     return DdsBackend(args.dds_config, timeout=args.state_wait)
 
@@ -111,7 +111,7 @@ def main(argv=None) -> int:
     if args.backend == "dds":
         args.realtime = True
         confirm_real_robot(args.robot_ip, force=args.force, yes=args.yes)
-    if args.viewer:
+    if args.viewer and args.backend != "isaac":      # Isaac Sim 은 실시간보다 느려 페이싱을 걸지 않는다
         args.realtime = True
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or (ROOT / "runs" / f"{stamp}-{args.backend}-{args.program}")
